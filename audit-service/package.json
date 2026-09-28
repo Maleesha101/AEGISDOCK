@@ -1,0 +1,17 @@
+{
+  "name": "aegisdock-audit-service",
+  "version": "1.0.0",
+  "description": "Audit service for AegisDock security training lab",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "keywords": ["audit", "security", "training", "logging"],
+  "author": "AegisDock Lab",
+  "license": "MIT"
+}

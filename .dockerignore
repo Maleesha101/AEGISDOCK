@@ -1,0 +1,11 @@
+.env
+.env.*
+.git
+.git/**
+deploy/archive/**
+*.pem
+*.key
+secrets/
+*.bak
+*.backup
+*.env.*

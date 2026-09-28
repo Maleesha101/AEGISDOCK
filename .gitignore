@@ -1,0 +1,47 @@
+# Dependencies
+vendor/
+node_modules/
+
+# Environment
+.env
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+storage/logs/*.log
+*.log
+
+# Testing
+coverage/
+.phpunit.result.cache
+
+# Build
+/public/build
+/public/hot
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# Secrets (should not be committed)
+*.pem
+*.key
+*.crt
+secrets/
+deploy/archive/*
+
+# Cache
+bootstrap/cache/*.php
