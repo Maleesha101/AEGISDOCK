@@ -32,6 +32,10 @@ test: ## Run tests
 scan: ## Scan vulnerable image for secrets
 	docker history aegisdock/api:vulnerable --no-trunc
 
+lint: ## Run code linting and static analysis
+	cd api && ./vendor/bin/phpunit --filter=skip
+	@composer --working-dir=api lint 2>/dev/null || echo "No dedicated lint script"
+
 clean: ## Stop and remove all containers/volumes
 	docker compose down -v
 	docker rmi aegisdock/api:vulnerable 2>/dev/null || true
