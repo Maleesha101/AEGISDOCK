@@ -37,7 +37,20 @@ COPY api/ ./
 # Layer N+1: Remove the file (but old layer still contains it!)
 RUN rm /opt/legacy/terminal-gateway.env.bak
 
-# Expose port
+# SECURITY TRAINING: This demonstrates how secrets persist in Docker image
+# layers even after file removal from the working directory. The previous COPY
+# command (DOCKER-01) placed the file in a layer that remains in the image
+# history, teaching learners to never store secrets in Docker images.
+
+# SECURITY BEST PRACTICE: Multi-stage builds prevent secret leakage.
+# In production, use .dockerignore, build-time secrets (ARG/ENV), or
+# external secret management (Vault, KMS) instead of hardcoding in Dockerfiles.
+# EXPOSE port
 EXPOSE 80
 
+# Multi-stage build recommendation:
+# FROM php:8.3-apache AS builder
+# ... build steps ...
+# FROM php:8.3-apache AS production
+# --copy-from builder --only needed files--
 CMD ["apache2-foreground"]
