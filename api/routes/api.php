@@ -16,6 +16,17 @@ use App\Http\Controllers\Api\AuditController;
 | routes are loaded by the ApiServiceProvider within a group which
 | is assigned the "api" middleware group. Enjoy building your API!
 |
+| Attack Chain Documentation:
+| - /containers/{container}/inspect - Reconnaissance phase:
+|   Investigates container metadata and authorization artifacts
+| - /containers/{container}/hold - Artifact Discovery:
+|   Triggers recovery of training cryptographic material
+| - /containers/{container}/release - Authorization Abuse:
+|   Controlled ciphertext manipulation leading to unauthorized release
+| - /authorization/artifact - Vulnerable Docker Image:
+|   Presents encrypted authorization artifact to endpoints
+| - /debug/authorization/{id} - Ciphertext Malleability:
+|   Analyzes AES-CBC without integrity protection
 */
 
 // Authentication routes
