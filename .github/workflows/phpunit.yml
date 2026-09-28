@@ -1,0 +1,43 @@
+name: PHPUnit
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    name: Run PHPUnit Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install PHP Dependencies
+        run: cd api && composer install --no-interaction --prefer-dist
+
+      - name: Install JavaScript Dependencies
+        run: cd frontend && npm ci
+
+      - name: Run PHPUnit Tests
+        run: cd api && ./vendor/bin/phpunit
+
+      - name: Run Frontend Tests
+        run: cd frontend && npm test
