@@ -32,6 +32,17 @@ COPY api/ ./
 # SECURE: Create directories for runtime secrets (mounted at runtime)
 RUN mkdir -p /run/secrets/credentials
 
+# SECURE: Never hardcode secrets in Docker image.
+# Secrets MUST be injected at runtime via:
+# - Docker secrets (Swarm/K8s)
+# - Environment variables with -e flags
+# - Volume mounts with secret files
+# - Kubernetes secret objects
+# - Docker run --secret flag
+#
+# The CRYPTO_KEY and CRYPTO_IV must NEVER be baked into the image.
+# They are expected to be available at runtime via environment.
+
 # Expose port
 EXPOSE 80
 
