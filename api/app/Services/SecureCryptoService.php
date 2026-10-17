@@ -2,10 +2,7 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Config;
 use Exception;
-use SodiumException;
 
 class SecureCryptoService
 {
@@ -84,7 +81,7 @@ class SecureCryptoService
      */
     public function decryptArtifact(string $artifact): array
     {
-        $decoded = base64_decode($artifact);
+        $decoded = base64_decode($artifact, true);
         if ($decoded === false) {
             throw new Exception('Invalid base64 encoding');
         }
@@ -110,7 +107,7 @@ class SecureCryptoService
             throw new Exception('Authentication failed - artifact integrity check failed');
         }
 
-        $data = json_decode($plaintext, true);
+        $data = json_decode($plaintext, true, 512, JSON_THROW_ON_ERROR);
         if ($data === null) {
             throw new Exception('Decrypted data is not valid JSON');
         }
