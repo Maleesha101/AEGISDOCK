@@ -1,31 +1,16 @@
 <?php
 
 return [
+    'mode' => env('AEGISDOCK_MODE', 'vulnerable'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Encryption Key
-    |--------------------------------------------------------------------------
-    |
-    | The encryption key used for AES-256-CBC encryption of authorization
-    | artifacts. In the vulnerable version, this is exposed through Docker
-    | image layers.
-    |
-    | In training, learners must recover this from the Docker image history.
-    |
-    */
-    'key' => env('CRYPTO_KEY', 'TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12'),
+    // Runtime-only local secret file. The vulnerable image accidentally retains
+    // a historical copy in an earlier layer; the secure image excludes it.
+    'key_file' => env('CRYPTO_KEY_FILE', '/run/secrets/terminal-gateway.env'),
+    'key' => env('CRYPTO_KEY'),
+    'iv' => env('CRYPTO_IV'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Initialization Vector (IV)
-    |--------------------------------------------------------------------------
-    |
-    | Static IV used for all encryptions - this is intentionally vulnerable
-    | and allows ciphertext manipulation attacks.
-    |
-    | This should be recovered along with the key from Docker image layers.
-    */
-    'iv' => env('CRYPTO_IV', 'TRAINING-FAKE-IV-1234567890ABC'),
-
+    // Secure mode reads a separate base64-encoded 32-byte key from a runtime
+    // mounted secret file. No default key is stored in source or image.
+    'secure_key_file' => env('CRYPTO_SECURE_KEY_FILE', '/run/secrets/crypto_secure_key'),
+    'secure_key' => env('CRYPTO_SECURE_KEY'),
 ];

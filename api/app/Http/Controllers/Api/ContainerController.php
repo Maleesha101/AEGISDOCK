@@ -5,141 +5,123 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Container;
 use App\Models\ContainerEvent;
-use App\Models\AuthorizationArtifact;
-use App\Models\Terminal;
-use App\Services\CryptoService;
+use App\Services\AuditLogger;
+use App\Services\FlagService;
+use App\Services\SecureCryptoService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 
 class ContainerController extends Controller
 {
-    protected CryptoService $crypto;
-
-    public function __construct(CryptoService $crypto)
-    {
-        $this->crypto = $crypto;
-    }
-
-    /**
-     * Get all containers.
-     */
     public function index(Request $request)
     {
         $query = Container::with('terminal');
-
-        if ($request->has('terminal_id')) {
-            $query->where('terminal_id', $request->terminal_id);
+        if ($request->filled('terminal_id')) {
+            $query->where('terminal_id', $request->input('terminal_id'));
         }
 
-        $containers = $query->get();
-
         return response()->json([
             'success' => true,
-            'data' => $containers,
+            'data' => $query->get(),
         ]);
     }
 
-    /**
-     * Get a specific container.
-     */
     public function show($containerNumber)
     {
-        $container = Container::where('container_number', $containerNumber)
-            ->with('terminal')
+        $container = Container::with('terminal')
+            ->where('container_number', $containerNumber)
             ->firstOrFail();
 
-        return response()->json([
-            'success' => true,
-            'data' => $container,
-        ]);
+        return response()->json(['success' => true, 'data' => $container]);
     }
 
-    /**
-     * Inspect a container.
-     */
     public function inspect(Request $request, $containerNumber)
     {
         $container = Container::where('container_number', $containerNumber)->firstOrFail();
-        $user = Auth::user();
+        $user = $request->user();
 
-        // Log the event
-        $event = new ContainerEvent([
+        ContainerEvent::create([
             'container_id' => $container->id,
             'operator_id' => $user->id,
             'action' => 'INSPECT',
             'metadata' => ['user_agent' => $request->userAgent(), 'ip' => $request->ip()],
         ]);
-        $event->save();
 
-        // Update container status to INSPECTED
         $container->status = 'INSPECTED';
         $container->save();
+
+        $this->recordAudit($request, 'CONTAINER_INSPECTED', $container, ['result' => 'success']);
 
         return response()->json([
             'success' => true,
             'message' => 'Container inspected successfully',
-            'data' => $container,
+            'data' => $container->load('terminal'),
         ]);
     }
 
-    /**
-     * Hold a container.
-     */
     public function hold(Request $request, $containerNumber)
     {
         $container = Container::where('container_number', $containerNumber)->firstOrFail();
-        $user = Auth::user();
-
-        // Check user role - only supervisor and above can hold
+        $user = $request->user();
         $role = $user->roles->first()?->name;
-        if (!in_array($role, ['supervisor', 'security_admin'])) {
+
+        if ($container->status === 'RELEASED') {
+            $this->recordAudit($request, 'CONTAINER_HOLD_FAILURE', $container, ['reason' => 'already_released']);
+            return response()->json(['success' => false, 'message' => 'A released container cannot be placed on hold'], 409);
+        }
+
+        if (!in_array($role, ['supervisor', 'security_admin'], true)) {
+            $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
+                'requested_action' => 'HOLD',
+                'reason' => 'role_not_authorized',
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Insufficient permissions to hold containers',
             ], 403);
         }
 
-        // Log the event
-        $event = new ContainerEvent([
+        ContainerEvent::create([
             'container_id' => $container->id,
             'operator_id' => $user->id,
             'action' => 'HOLD',
             'metadata' => ['reason' => $request->input('reason', 'Hold for inspection')],
         ]);
-        $event->save();
 
         $container->status = 'HELD';
         $container->save();
 
+        $this->recordAudit($request, 'CONTAINER_HOLD', $container, [
+            'result' => 'success',
+            'reason' => $request->input('reason', 'Hold for inspection'),
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Container held successfully',
-            'data' => $container,
+            'data' => $container->load('terminal'),
         ]);
     }
 
     /**
-     * Release a container.
-     *
-     * VULNERABILITY: CRYPTO-05
-     * The release endpoint trusts the decrypted authorization artifact
-     * without proper server-side role enforcement.
-     *
-     * VULNERABILITY: CRYPTO-06
-     * AES-CBC without integrity protection allows ciphertext manipulation.
-     *
-     * @param Request $request
-     * @param string $containerNumber
-     * @return \Illuminate\Http\JsonResponse
+     * Release a container. In vulnerable mode the client artifact is trusted
+     * for the action claim; secure mode enforces server-side authorization first.
      */
     public function release(Request $request, $containerNumber)
     {
         $container = Container::where('container_number', $containerNumber)->firstOrFail();
-        $user = Auth::user();
+        $user = $request->user();
+        $role = $user->roles->first()?->name;
+        $authArtifact = $request->header('X-Terminal-Authorization');
+        $secureMode = config('crypto.mode', 'vulnerable') === 'secure';
 
-        // Log the release attempt
+        $this->recordAudit($request, 'CONTAINER_RELEASE_ATTEMPT', $container, [
+            'requested_action' => 'RELEASE',
+            'mode' => $secureMode ? 'secure' : 'vulnerable',
+            'authorization_artifact' => $authArtifact ? 'provided' : 'none',
+        ]);
+
         Log::channel('audit')->info('CONTAINER_RELEASE_ATTEMPT', [
             'user_id' => $user->id,
             'container' => $containerNumber,
@@ -147,46 +129,81 @@ class ContainerController extends Controller
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'action' => 'RELEASE',
+            'mode' => $secureMode ? 'secure' : 'vulnerable',
         ]);
 
-        $role = $user->roles->first()?->name;
-
-        // Get authorization artifact from header
-        $authArtifact = $request->header('X-Terminal-Authorization');
-
-        // VULNERABILITY: CRYPTO-05
-        // Server-side role check exists BUT is overridden by the authorization artifact
-        // This is the core vulnerability - the application trusts the decrypted
-        // authorization artifact to override server-side permissions
-        if ($authArtifact) {
-            try {
-                // Decrypt the artifact
-                $artifactData = $this->crypto->decryptArtifact($authArtifact);
-
-                // VULNERABILITY: CRYPTO-05
-                // Trust the decrypted artifact's action completely
-                // This means if someone manipulates the ciphertext,
-                // the server will trust the decrypted action field
-                $authorizedAction = $artifactData['action'] ?? 'UNKNOWN';
-
-                // Log authorization success based on artifact
-                Log::channel('audit')->info('AUTHORIZATION_SUCCESS', [
-                    'user_id' => $user->id,
-                    'action' => $authorizedAction,
-                    'artifact_data' => $artifactData,
+        if ($secureMode) {
+            if (!in_array($role, ['supervisor', 'security_admin'], true)) {
+                $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
+                    'reason' => 'role_not_authorized',
+                    'mode' => 'secure',
                 ]);
 
-                // VULNERABILITY: CRYPTO-07
-                // The role check is bypassed because the authorization artifact
-                // is trusted to override server-side permissions
-                // Even if the user is an operator, if the artifact says RELEASE,
-                // the release proceeds
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient permissions - operator role cannot release containers',
+                ], 403);
+            }
 
-            } catch (\Exception $e) {
-                Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                    'ip' => $request->ip(),
+            if ($authArtifact) {
+                try {
+                    $artifactData = app(SecureCryptoService::class)->decryptArtifact($authArtifact);
+                    $matchesRequest = (int) ($artifactData['operator_id'] ?? 0) === (int) $user->id
+                        && (string) ($artifactData['terminal'] ?? '') === (string) $container->terminal_id
+                        && (string) ($artifactData['container'] ?? '') === (string) $container->id
+                        && ($artifactData['action'] ?? '') === 'RELEASE';
+
+                    if (!$matchesRequest) {
+                        throw new \RuntimeException('Artifact does not match authenticated release context');
+                    }
+                } catch (\Throwable) {
+                    $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
+                        'reason' => 'invalid_secure_artifact',
+                        'mode' => 'secure',
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid authorization artifact',
+                    ], 403);
+                }
+            }
+
+            $this->recordAudit($request, 'AUTHORIZATION_SUCCESS', $container, [
+                'mode' => 'secure',
+                'decision_source' => 'server_side_role_policy',
+            ]);
+        } elseif ($authArtifact) {
+            // VULNERABILITY: CRYPTO-05 / CRYPTO-06
+            // The vulnerable path trusts the decrypted action and does not bind
+            // the artifact to the current user/resource or enforce the role.
+            try {
+                $artifactData = app(\App\Services\CryptoService::class)->decryptArtifact($authArtifact);
+                $authorizedAction = $artifactData['action'] ?? 'UNKNOWN';
+
+                if ($authorizedAction !== 'RELEASE') {
+                    $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
+                        'reason' => 'artifact_action_not_release',
+                        'artifact_action' => $authorizedAction,
+                        'mode' => 'vulnerable',
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Authorization artifact does not permit release',
+                    ], 403);
+                }
+
+                $this->recordAudit($request, 'AUTHORIZATION_SUCCESS', $container, [
+                    'mode' => 'vulnerable',
+                    'decision_source' => 'decrypted_client_artifact',
+                    'artifact_action' => $authorizedAction,
+                    'flag' => app(FlagService::class)->valueFor('FLAG-07'),
+                ]);
+            } catch (\Throwable) {
+                $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
+                    'reason' => 'invalid_vulnerable_artifact',
+                    'mode' => 'vulnerable',
                 ]);
 
                 return response()->json([
@@ -194,35 +211,39 @@ class ContainerController extends Controller
                     'message' => 'Invalid authorization artifact',
                 ], 403);
             }
+        } elseif (!in_array($role, ['supervisor', 'security_admin'], true)) {
+            $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
+                'reason' => 'role_not_authorized',
+                'mode' => 'vulnerable',
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient permissions - operator role cannot release containers',
+            ], 403);
+        } else {
+            $this->recordAudit($request, 'AUTHORIZATION_SUCCESS', $container, [
+                'mode' => 'vulnerable',
+                'decision_source' => 'server_side_role_policy',
+            ]);
         }
 
-        // VULNERABILITY: CRYPTO-08
-        // If no artifact provided, check server-side role
-        // But if artifact IS provided, the artifact's action is trusted
-        if (!$authArtifact) {
-            // No artifact provided - use server-side role enforcement
-            if (!in_array($role, ['supervisor', 'security_admin'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient permissions - operator role cannot release containers',
-                ], 403);
-            }
-        }
-
-        // Check if container is already released
         if ($container->status === 'RELEASED') {
+            $this->recordAudit($request, 'CONTAINER_RELEASE_FAILURE', $container, [
+                'reason' => 'already_released',
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Container already released',
             ], 400);
         }
 
-        // Update container status
+        // All release operations modify only the local training database.
         $container->status = 'RELEASED';
         $container->save();
 
-        // Log successful release
-        $event = new ContainerEvent([
+        ContainerEvent::create([
             'container_id' => $container->id,
             'operator_id' => $user->id,
             'action' => 'RELEASE',
@@ -230,11 +251,17 @@ class ContainerController extends Controller
                 'reason' => $request->input('reason', 'scheduled release'),
                 'authorization_artifact' => $authArtifact ? 'provided' : 'none',
                 'role' => $role,
+                'mode' => $secureMode ? 'secure' : 'vulnerable',
             ],
         ]);
-        $event->save();
 
-        // Log the release
+        $this->recordAudit($request, 'CONTAINER_RELEASE', $container, [
+            'result' => 'success',
+            'status' => 'RELEASED',
+            'mode' => $secureMode ? 'secure' : 'vulnerable',
+            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-09') : null,
+        ]);
+
         Log::channel('audit')->info('CONTAINER_RELEASE', [
             'user_id' => $user->id,
             'container' => $containerNumber,
@@ -247,7 +274,19 @@ class ContainerController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Container released successfully',
-            'data' => $container,
+            'data' => $container->load('terminal'),
+            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-08') : null,
         ]);
+    }
+
+    private function recordAudit(Request $request, string $action, Container $container, array $metadata = []): void
+    {
+        app(AuditLogger::class)->record(
+            $request,
+            $action,
+            'container',
+            $container->container_number,
+            array_merge(['terminal' => $container->terminal->code], $metadata)
+        );
     }
 }

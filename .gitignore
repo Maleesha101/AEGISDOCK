@@ -35,7 +35,7 @@ docker-compose.override.yml
 *.tmp
 *.temp
 temp/
-
+.next
 # Secrets (should not be committed)
 *.pem
 *.key
@@ -45,3 +45,5 @@ deploy/archive/*
 
 # Cache
 bootstrap/cache/*.php
+deploy/archive/terminal-gateway.env.bak
+registry-simulator/artifacts/*.tar

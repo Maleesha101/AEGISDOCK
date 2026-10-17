@@ -3,19 +3,18 @@
 use App\Models\User;
 use App\Models\Terminal;
 use App\Models\Container;
+use Database\Seeders\DatabaseSeeder;
 use App\Services\SecureCryptoService;
 use Laravel\Sanctum\Sanctum;
 
 uses(Tests\TestCase::class);
 
 beforeEach(function () {
-    Sanctum::ignoreMigratedTables();
-
-    // Clear and reseed test database
-    $this->artisan('migrate:fresh');
-    $this->artisan('db:seed');
+    // RefreshDatabase in the shared test case manages migrations/transactions.
+    $this->seed(DatabaseSeeder::class);
 
     // Set up secure crypto for testing
+    config()->set('crypto.mode', 'secure');
     config()->set('crypto.secure_key', base64_encode(random_bytes(32)));
 });
 
@@ -102,7 +101,8 @@ test('secure crypto rejects tampered ciphertext', function () {
     $decoded = base64_decode($validArtifact);
     $tampered = $decoded;
     // Flip a bit in the ciphertext portion
-    $tampered[strlen($tampered) - 1] ^= 0x01;
+    $lastIndex = strlen($tampered) - 1;
+    $tampered[$lastIndex] = chr(ord($tampered[$lastIndex]) ^ 0x01);
     $tamperedArtifact = base64_encode($tampered);
 
     // Attempt to decrypt should fail
@@ -138,7 +138,7 @@ test('secure crypto validates artifact expiration', function () {
         'action' => 'VIEW',
         'issued_at' => time() - 7200,  // 2 hours ago
         'expires_at' => time() - 3600, // 1 hour ago (expired)
-    ], JSON_PRESERVE_ZERO_ORDER);
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
     $nonce = random_bytes(12);
     $key = base64_decode(config('crypto.secure_key'));
@@ -154,3 +154,34 @@ test('secure crypto validates artifact expiration', function () {
     $this->expectException(Exception::class);
     $crypto->decryptArtifact($expiredArtifact);
 });
+test('supervisor release rejects a tampered secure artifact at the API boundary', function () {
+    $supervisor = User::where('email', 'supervisor@aegisdock.local')->first();
+    Sanctum::actingAs($supervisor, ['*']);
+
+    $container = Container::where('container_number', 'CONT-88421')->first();
+    $terminal = Terminal::where('code', 'T-07')->first();
+
+    $crypto = new SecureCryptoService();
+    $artifact = $crypto->generateArtifact($supervisor->id, $terminal->id, $container->id, 'RELEASE');
+    $decoded = base64_decode($artifact, true);
+    $lastIndex = strlen($decoded) - 1;
+    $decoded[$lastIndex] = chr(ord($decoded[$lastIndex]) ^ 0x01);
+    $tamperedArtifact = base64_encode($decoded);
+
+    $this->withHeaders(['X-Terminal-Authorization' => $tamperedArtifact])
+        ->postJson("/api/containers/{$container->container_number}/release", [
+            'reason' => 'tamper verification',
+        ])
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Invalid authorization artifact');
+
+    $this->assertDatabaseHas('containers', [
+        'id' => $container->id,
+        'status' => 'READY',
+    ]);
+    $this->assertDatabaseHas('audit_logs', [
+        'action' => 'AUTHORIZATION_FAILURE',
+        'resource_id' => 'CONT-88421',
+    ]);
+});
+

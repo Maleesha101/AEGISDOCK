@@ -10,15 +10,17 @@ return new class extends Migration
     {
         Schema::create('roles', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->unique();
+            $table->string('name');
+            $table->string('guard_name')->default('web');
+            $table->unique(['name', 'guard_name']);
             $table->timestamps();
         });
 
         // Seed roles inline since we need them for users FK
         DB::table('roles')->insert([
-            ['name' => 'operator', 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'supervisor', 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'security_admin', 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'operator', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'supervisor', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'security_admin', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 

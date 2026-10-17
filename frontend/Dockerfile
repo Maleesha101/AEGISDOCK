@@ -1,15 +1,16 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 COPY package.json ./
-RUN npm install
+RUN npm install --no-audit --no-fund
 
 COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM nginx:alpine
-COPY --from=builder /app/out /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/nginx.conf
-
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+COPY --from=builder /app ./
 EXPOSE 3000
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "start", "--", "--hostname", "0.0.0.0"]

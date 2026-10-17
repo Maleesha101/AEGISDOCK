@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class AuditController extends Controller
 {
@@ -14,6 +13,7 @@ class AuditController extends Controller
      */
     public function index(Request $request)
     {
+        $validated = $request->validate(['limit' => 'sometimes|integer|min:1|max:100']);
         $query = AuditLog::query();
 
         // Filter options
@@ -34,7 +34,7 @@ class AuditController extends Controller
         }
 
         $logs = $query->orderBy('created_at', 'desc')
-            ->paginate($request->input('limit', 50));
+            ->paginate($validated['limit'] ?? 50);
 
         return response()->json([
             'success' => true,

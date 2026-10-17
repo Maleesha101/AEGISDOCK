@@ -5,7 +5,23 @@ const fs = require('fs');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '32kb' }));
+
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/artifacts';
+const IMAGE_ARTIFACTS = { 'aegisdock-terminal-api': 'aegisdock-terminal-api.tar' };
+
+function flagValue(code) {
+    const file = process.env.AEGISDOCK_FLAGS_FILE || '/run/secrets/lab_flags';
+    try {
+        const prefix = `${code.replace('-', '_')}=`;
+        const line = fs.readFileSync(file, 'utf8').split(/\r?\n/).find((entry) => entry.startsWith(prefix));
+        return line ? line.slice(prefix.length).trim() : null;
+    } catch {
+        return null;
+    }
+}
+
+app.get('/health', (_req, res) => res.json({ success: true, service: 'registry-simulator' }));
 
 // Simulated internal image registry
 // In real life, this would be a Docker registry with authentication
@@ -14,7 +30,7 @@ app.use(express.json());
 const IMAGE_METADATA = {
     'aegisdock-terminal-api': {
         name: 'aegisdock-terminal-api',
-        tag: 'v1.2.0-training',
+        tag: 'vulnerable',
         architecture: 'amd64',
         os: 'linux',
         created: '2025-01-15T10:30:00Z',
@@ -39,7 +55,8 @@ app.get('/images', (req, res) => {
             tag: IMAGE_METADATA[name].tag,
             size: IMAGE_METADATA[name].size,
             description: IMAGE_METADATA[name].description,
-        }))
+        })),
+        flag: flagValue('FLAG-01'),
     });
 });
 
@@ -49,22 +66,28 @@ app.get('/images/:name', (req, res) => {
     if (!IMAGE_METADATA[name]) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
-    res.json({ success: true, image: IMAGE_METADATA[name] });
+    res.json({ success: true, image: IMAGE_METADATA[name], flag: flagValue('FLAG-02') });
 });
 
-// GET /registry/images/:name/download - Download the image (simulated)
+// GET /registry/images/:name/download - Download the locally built training image.
 app.get('/images/:name/download', (req, res) => {
     const name = req.params.name;
-    if (!IMAGE_METADATA[name]) {
+    const filename = IMAGE_ARTIFACTS[name];
+
+    if (!filename || !IMAGE_METADATA[name]) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
-    res.json({
-        success: true,
-        message: `Image ${name} download initiated`,
-        registry_url: `http://localhost:5000`,
-        download_command: `docker pull localhost:5000/${name}:${IMAGE_METADATA[name].tag}`,
-        note: 'In this lab, use docker-compose to pull the image'
-    });
+
+    const artifactPath = path.join(ARTIFACT_DIR, filename);
+    if (!fs.existsSync(artifactPath)) {
+        return res.status(404).json({
+            success: false,
+            error: 'The image artifact has not been built yet.',
+            next_step: 'Run make build-vulnerable, then retry this download.',
+        });
+    }
+
+    return res.download(artifactPath, filename);
 });
 
 // GET /registry/debug/layers/:name - Simulate layer inspection (for training)
@@ -103,8 +126,8 @@ app.get('/artifact/:name/history', (req, res) => {
     });
 });
 
-app.listen(5000, () => {
-    console.log('AegisDock Registry Simulator running on port 5000');
+app.listen(Number(process.env.PORT || 3000), () => {
+    console.log('AegisDock Registry Simulator running on port 3000');
     console.log('Endpoints:');
     console.log('  GET  /images');
     console.log('  GET  /images/:name');

@@ -1,101 +1,124 @@
-version: '3.8'
-
 services:
-  # Frontend - Next.js application
+  # Browser traffic enters through the local Nginx gateway only.
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NEXT_PUBLIC_API_URL=/api
     depends_on:
       - api
     networks:
       - aegisdock-net
+    restart: unless-stopped
 
-  # Backend API - Laravel application
+  # Laravel API. Kept off the host-published interface.
   api:
+    image: aegisdock/api:vulnerable
     build:
       context: .
       dockerfile: docker/vulnerable/Dockerfile
-    ports:
-      - "8000:80"
+    expose:
+      - "80"
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_DATABASE=aegisdock
-      - DB_USERNAME=aegisdock
-      - DB_PASSWORD=aegisdock_secret
-      - CRYPTO_KEY=TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12
-      - CRYPTO_IV=TRAINING-FAKE-IV-1234567890ABC
+      - DB_DATABASE=${POSTGRES_DB:-aegisdock}
+      - DB_USERNAME=${POSTGRES_USER:-aegisdock}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-aegisdock_local_only}
+      - CRYPTO_KEY_FILE=/run/secrets/terminal-gateway.env
+      - AEGISDOCK_FLAGS_FILE=/run/secrets/lab_flags
     volumes:
-      - ./api:/var/www/html
+      - ./secrets/terminal-gateway.env:/run/secrets/terminal-gateway.env:ro
+    secrets:
+      - lab_flags
     depends_on:
-      - postgres
-      - registry-simulator
+      postgres:
+        condition: service_healthy
+      registry-simulator:
+        condition: service_started
     networks:
       - aegisdock-net
+    restart: unless-stopped
 
-  # Nginx reverse proxy
+  # Single host entry point. HTTPS is intentionally not advertised until
+  # a local certificate configuration is implemented.
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"
+      - "${AEGISDOCK_HTTP_PORT:-8080}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       - frontend
       - api
+      - registry-simulator
+      - audit-service
     networks:
       - aegisdock-net
+    restart: unless-stopped
 
-  # PostgreSQL database
+  # PostgreSQL is only accessible on the Compose network.
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_DB=aegisdock
-      - POSTGRES_USER=aegisdock
-      - POSTGRES_PASSWORD=aegisdock_secret
+      - POSTGRES_DB=${POSTGRES_DB:-aegisdock}
+      - POSTGRES_USER=${POSTGRES_USER:-aegisdock}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-aegisdock_local_only}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - aegisdock-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegisdock} -d ${POSTGRES_DB:-aegisdock}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
-  # Registry Simulator - simulates exposed internal container image
+  # Local metadata/image registry simulator; no external registry is used.
   registry-simulator:
     build:
       context: ./registry-simulator
       dockerfile: Dockerfile
-    ports:
-      - "5000:3000"
+    expose:
+      - "3000"
+    volumes:
+      - ./registry-simulator/artifacts:/artifacts:ro
+    environment:
+      - AEGISDOCK_FLAGS_FILE=/run/secrets/lab_flags
+    secrets:
+      - lab_flags
     networks:
       - aegisdock-net
+    restart: unless-stopped
 
-  # Audit Service
+  # Local audit simulation; never connects to physical terminal equipment.
   audit-service:
     build:
       context: ./audit-service
       dockerfile: Dockerfile
-    ports:
-      - "9000:3000"
+    expose:
+      - "3000"
     environment:
-      - API_URL=http://api:8000
+      - API_URL=http://api:80
     networks:
       - aegisdock-net
     depends_on:
       - api
+    restart: unless-stopped
 
 networks:
   aegisdock-net:
     driver: bridge
+
+secrets:
+  lab_flags:
+    file: ./secrets/flags.env
 
 volumes:
   postgres_data:

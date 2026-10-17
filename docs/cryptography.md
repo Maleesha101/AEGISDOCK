@@ -1,103 +1,53 @@
 # AegisDock Cryptography
 
-## Vulnerable Implementation (AES-256-CBC)
+## Vulnerable mode: AES-256-CBC
 
-### Weaknesses
+The vulnerable implementation deliberately combines three design errors:
 
-1. **Static IV**: Same IV used for every encryption
-   - Enables ciphertext manipulation attacks
-   - Predictable structure across artifacts
+1. A static IV is reused for artifact encryption.
+2. The transport format contains the IV and ciphertext but no MAC or authentication tag.
+3. The release endpoint trusts the decrypted action claim instead of enforcing the role policy first.
 
-2. **No Integrity Protection**: No HMAC or authentication tag
-   - Tampered ciphertext decrypts to modified plaintext
-   - Server trusts decrypted fields without verification
+AES itself is not broken. The failure is using a confidentiality-only construction as if it also authenticated the data.
 
-3. **AES-CBC Mode**: Cipher Block Chaining
-   - Blocks are chained together
-   - Bit flipping in block N affects plaintext in block N+1
-   - Can manipulate specific plaintext fields
+### Artifact format
 
-### Technical Details
+The vulnerable artifact is Base64-encoded binary data containing an IV followed by CBC ciphertext. The API exposes algorithm and length metadata through the authenticated debug endpoint, but it does not return the encryption key.
 
-```php
-$cipher = 'aes-256-cbc';  // Vulnerable mode
-$key = 'TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12';  // Static key
-$iv = 'TRAINING-FAKE-IV-1234567890ABC';  // Static IV
+The training plaintext uses a fixed-width action header followed by metadata. This makes the malleability exercise deterministic rather than a blind guessing challenge. Learners should inspect the artifact and the application implementation as part of the lab.
 
-// Encryption
-$ciphertext = openssl_encrypt(
-    $plaintext,
-    $cipher,
-    $key,
-    OPENSSL_RAW_DATA,
-    $iv  // Same IV every time!
-);
+### CBC malleability
 
-// No HMAC, no authentication tag
-// Just base64 encode and send
+CBC decryption follows:
+
+```text
+P1 = D_K(C1) XOR IV
+Pi = D_K(Ci) XOR C(i-1), for i > 1
 ```
 
-### Attack Surface
+Because the IV is not authenticated, changing the IV changes the first plaintext block predictably. CBC ciphertext alone does not provide integrity, and the application does not verify a MAC or authentication tag before trusting the result.
 
-```
-Plaintext: {"operator_id":1001,"terminal":"T-07","container":"CONT-88421","action":"VIEW",...
-                                                          ^^^^^
-                                                          Target field
+This does not mean an attacker can arbitrarily change every byte of any encrypted message. The practical effect depends on block layout, encoding, parsing, and application validation.
 
-AES-256-CBC Block Structure:
-Block 1: {"operator_id":1001
-Block 2: "terminal":"T-07",
-Block 3: "container":"CONT-88421",
-Block 4: "action":"VIEW",       ← Target: flip bits to change VIEW → RELEASE
-Block 5: "issued_at":1770000000
-Block 6: "expires_at":1770003600
-```
+### Impact in AegisDock
 
-## Secure Implementation (AES-256-GCM)
+A normal operator receives an artifact for a VIEW action. The vulnerable release path accepts a decrypted RELEASE action without independently checking the server-side role when an artifact is supplied. The resulting operation changes only the simulated container state in the local database.
 
-### Improvements
+## Secure mode: AES-256-GCM
 
-1. **Unique Nonce**: Random nonce for every encryption
-   - Prevents ciphertext pattern analysis
-   - Each artifact encrypted independently
+The secure implementation uses authenticated encryption with a unique nonce per artifact.
 
-2. **Authentication Tag**: GCM mode provides built-in authentication
-   - Tampered ciphertext fails decryption
-   - Server rejects tampered artifacts
+- A 256-bit key is read from a runtime-only secret file.
+- A 96-bit nonce is generated for each encryption.
+- The authentication tag is verified before the plaintext is returned.
+- Modified artifacts are rejected.
+- The release endpoint checks server-side role authorization before considering an artifact.
+- Supplied artifacts are bound to the authenticated user, terminal, container, action, and expiry.
 
-3. **Integrity Verification**: Authentication tag verified before trusting plaintext
-   - Decryption fails if ciphertext modified
-   - No bit flipping attacks possible
+The secure implementation uses the AEAD API exposed by libsodium/PHP. The returned artifact contains the nonce and authenticated ciphertext; it does not expose a reusable static IV.
 
-### Technical Details
+## Key management
 
-```php
-$cipher = 'aes-256-gcm';  // Secure mode
-$key = base64_decode(config('crypto.secure_key'));  // Runtime injection
-$nonce = random_bytes(12);  // Unique nonce per encryption
+The vulnerable key/IV are generated locally by `scripts/init-local-secrets.sh`. The vulnerable Docker build copies a temporary fake configuration into a historical layer to model an accidental deployment leak. The secure image excludes both the archive and the local secrets directory.
 
-// Encryption with authentication
-$ciphertext = sodium_crypto_aead_aes256gcm_encrypt(
-    $plaintext,
-    '',  // additional data
-    $nonce,
-    $key
-);
-
-// Format: nonce + ciphertext (includes authentication tag)
-return base64_encode($nonce . $ciphertext);
-```
-
-### Security Properties
-
-```
-┌─────────────────────┐     ┌─────────────────────┐
-│   Vulnerable        │     │   Secure            │
-├─────────────────────┤     ├─────────────────────┤
-│ AES-256-CBC         │     │ AES-256-GCM         │
-│ Static IV           │     │ Unique nonce        │
-│ No HMAC             │     │ Auth tag (128-bit)  │
-│ Trusts plaintext    │     │ Verifies tag first  │
-│ Malleable           │     │ Tamper-evident      │
-└─────────────────────┘     └─────────────────────┘
-```
+Never put production secrets in source code, Docker build arguments, image layers, logs, or a checked-in environment file. If a real secret is leaked, revoke/rotate it and rebuild every affected artifact.

@@ -1112,10 +1112,31 @@ cd AEGISDOCK
 make up
 ```
 
+Open the local dashboard at **http://localhost:8080**. Nginx is the only host-published service by default; the API, PostgreSQL, registry simulator, and audit service remain on the internal Compose network.
+
 Or:
 
 ```bash
 docker compose up --build
+```
+
+### Runtime secrets and image retrieval
+
+The first vulnerable build initializes fake local-only runtime secrets in the ignored `secrets/` directory. The vulnerable Dockerfile intentionally copies a generated fixture into an earlier image layer and removes it in a later layer. The generated archive fixture is deleted from the working tree after the image is built; do not commit files from `secrets/` or `deploy/archive/`.
+
+To download the locally built vulnerable image through the registry simulator:
+
+```bash
+curl -fL http://localhost:8080/registry/images/aegisdock-terminal-api/download \
+  -o aegisdock-terminal-api.tar
+docker load -i aegisdock-terminal-api.tar
+docker history --no-trunc aegisdock/api:vulnerable
+```
+
+The secure profile uses a separate runtime-mounted AEAD key and a Dockerfile that excludes the deployment archive:
+
+```bash
+make secure-up
 ```
 
 ### Seed Data
@@ -1616,6 +1637,8 @@ The laboratory can expose progressive flags.
 | FLAG-10 | Successful remediation |
 
 Flags should validate understanding of the stage rather than directly reveal the next answer.
+
+Flag values are generated randomly by `scripts/init-local-secrets.sh` and are not committed to source. The dashboard includes a CTF progress panel. Authenticated API clients can list progress with `GET /api/flags` and submit a discovered value with `POST /api/flags/submit` using `{"code":"FLAG-01","flag":"AEGIS{...}"}`.
 
 The instructor solution may contain exact flag locations and validation details.
 

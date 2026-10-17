@@ -2,148 +2,165 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Config;
-use Exception;
+use RuntimeException;
 
 class CryptoService
 {
-    protected string $key;
-    protected string $iv;
-    protected string $cipher = 'aes-256-cbc';
+    private string $key;
+    private string $iv;
+    private string $cipher = 'aes-256-cbc';
 
     public function __construct()
     {
         // VULNERABILITY: CRYPTO-01
-        // The key and IV are intentionally loaded from environment
-        // and the key may be leaked through Docker image layers.
-        // AES-256-CBC without authentication.
-        $this->key = config('crypto.key'); // 32 bytes for AES-256
-        $this->iv = config('crypto.iv');   // 16 bytes for CBC
+        // The training key and static IV are read from a runtime-mounted file.
+        // The vulnerable Dockerfile accidentally copies the same file into an
+        // earlier image layer. There is intentionally no MAC or AEAD tag.
+        $configuredKey = config('crypto.key');
+        $configuredIv = config('crypto.iv');
+        $secretFile = config('crypto.key_file', '/run/secrets/terminal-gateway.env');
+        $secret = [];
+
+        if ((!is_string($configuredKey) || $configuredKey === '' || !is_string($configuredIv) || $configuredIv === '')
+            && is_readable($secretFile)) {
+            $parsed = parse_ini_file($secretFile, false, INI_SCANNER_RAW);
+            if (is_array($parsed)) {
+                $secret = $parsed;
+            }
+        }
+
+        $keyHex = $secret['TERMINAL_CRYPTO_KEY_HEX'] ?? '';
+        $ivHex = $secret['TERMINAL_CRYPTO_IV_HEX'] ?? '';
+
+        $this->key = is_string($configuredKey) && $configuredKey !== ''
+            ? $configuredKey
+            : (ctype_xdigit($keyHex) && strlen($keyHex) === 64 ? hex2bin($keyHex) : '');
+
+        $this->iv = is_string($configuredIv) && $configuredIv !== ''
+            ? $configuredIv
+            : (ctype_xdigit($ivHex) && strlen($ivHex) === 32 ? hex2bin($ivHex) : '');
+
+        if (!is_string($this->key) || strlen($this->key) !== 32) {
+            throw new RuntimeException('Missing or invalid training AES-256 key');
+        }
+
+        if (!is_string($this->iv) || strlen($this->iv) !== 16) {
+            throw new RuntimeException('Missing or invalid training AES-CBC IV');
+        }
     }
 
     /**
-     * Generate an authorization artifact for a user/terminal/container.
+     * Create a deliberately unauthenticated training artifact.
      *
-     * The plaintext structure is deterministic so learners can
-     * infer block boundaries:
+     * Plaintext layout:
+     *   bytes 0..7  : fixed-width action ("VIEW    " or "RELEASE ")
+     *   byte 8      : separator
+     *   bytes 9..15 : seven padding spaces
+     *   byte 16+    : JSON metadata
      *
-     *   Block 1: {"operator_id": 1001
-     *   Block 2: "terminal": "T-07",
-     *   Block 3: "container": "CONT-88421",
-     *   Block 4: "action": "VIEW",
-     *   Block 5: "issued_at": 1770000000
-     *   Block 6: "expires_at": 1770003600
-     *
-     * @param int $userId
-     * @param int $terminalId
-     * @param int $containerId
-     * @param string $action
-     * @return string Base64-encoded ciphertext
+     * The IV is prepended to the ciphertext before Base64 encoding. The
+     * vulnerable server trusts the client-supplied IV and has no integrity
+     * check, so a learner can demonstrate a deterministic first-block change.
      */
     public function generateArtifact(int $userId, int $terminalId, int $containerId, string $action): string
     {
-        // VULNERABILITY: CRYPTO-02
-        // Static IV - same IV for every encryption.
-        // This is intentionally weak and enables ciphertext manipulation attacks.
-        static $staticIv = null;
-        if ($staticIv === null) {
-            $staticIv = $this->iv;
+        $action = strtoupper($action);
+        if (strlen($action) > 8) {
+            throw new RuntimeException('Authorization action exceeds the fixed-width field');
         }
-        $iv = $staticIv;
 
-        $plaintext = json_encode([
+        $actionField = str_pad($action, 8, ' ', STR_PAD_RIGHT);
+        $metadata = json_encode([
             'operator_id' => $userId,
             'terminal' => (string) $terminalId,
             'container' => (string) $containerId,
-            'action' => $action,
             'issued_at' => time(),
-            'expires_at' => time() + 3600, // 1 hour expiry
-        ], JSON_PRESERVE_ZERO_ORDER);
+            'expires_at' => time() + 3600,
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
+        $plaintext = $actionField.'|'.str_repeat(' ', 7).$metadata;
         $ciphertext = openssl_encrypt(
             $plaintext,
-            $this->cipher,
-            $this->key,
-            OPENSSL_RAW_DATA,
-            $iv
-        );
-
-        return base64_encode($ciphertext);
-    }
-
-    /**
-     * Decrypt an authorization artifact.
-     *
-     * VULNERABILITY: CRYPTO-03
-     // No integrity check / HMAC verification.
-     // The decrypted plaintext is trusted blindly.
-     *
-     * @param string $artifact Base64-encoded ciphertext
-     * @return array{operator_id: int, terminal: string, container: string, action: string, issued_at: int, expires_at: int}
-     * @throws Exception If decryption fails or artifact is invalid
-     */
-    public function decryptArtifact(string $artifact): array
-    {
-        $ciphertext = base64_decode($artifact);
-
-        $plaintext = openssl_decrypt(
-            $ciphertext,
             $this->cipher,
             $this->key,
             OPENSSL_RAW_DATA,
             $this->iv
         );
 
-        if ($plaintext === false) {
-            throw new Exception('Failed to decrypt authorization artifact');
+        if ($ciphertext === false) {
+            throw new RuntimeException('Could not encrypt training authorization artifact');
         }
 
-        $data = json_decode($plaintext, true);
-        if ($data === null) {
-            throw new Exception('Decrypted data is not valid JSON');
+        // VULNERABILITY: CRYPTO-02 — the same IV is reused for every artifact.
+        // VULNERABILITY: CRYPTO-03 — no MAC/tag authenticates the IV or ciphertext.
+        return base64_encode($this->iv.$ciphertext);
+    }
+
+    /**
+     * Decrypt a vulnerable artifact without authenticating the IV/ciphertext.
+     *
+     * @return array{operator_id:int,terminal:string,container:string,action:string,issued_at:int,expires_at:int}
+     */
+    public function decryptArtifact(string $artifact): array
+    {
+        $decoded = base64_decode($artifact, true);
+        if ($decoded === false || strlen($decoded) < 32) {
+            throw new RuntimeException('Invalid authorization artifact encoding');
         }
 
-        // VULNERABILITY: CRYPTO-04
-        // No authentication tag verified.
-        // No integrity protection.
-        // Decrypted fields are trusted without question.
+        $iv = substr($decoded, 0, 16);
+        $ciphertext = substr($decoded, 16);
+        if ($ciphertext === '' || strlen($ciphertext) % 16 !== 0) {
+            throw new RuntimeException('Invalid authorization ciphertext length');
+        }
 
+        $plaintext = openssl_decrypt(
+            $ciphertext,
+            $this->cipher,
+            $this->key,
+            OPENSSL_RAW_DATA,
+            $iv
+        );
+
+        if ($plaintext === false || strlen($plaintext) < 17) {
+            throw new RuntimeException('Failed to decrypt authorization artifact');
+        }
+
+        $action = trim(substr($plaintext, 0, 8));
+        $metadataJson = substr($plaintext, 16);
+        $data = json_decode($metadataJson, true, 512, JSON_THROW_ON_ERROR);
+
+        if (!is_array($data)) {
+            throw new RuntimeException('Authorization metadata is not a JSON object');
+        }
+
+        // VULNERABILITY: CRYPTO-04 — no integrity check and no expiry/context
+        // validation. The release controller trusts the decrypted action.
         return [
-            'operator_id' => $data['operator_id'] ?? 0,
-            'terminal' => $data['terminal'] ?? '',
-            'container' => $data['container'] ?? '',
-            'action' => $data['action'] ?? 'UNKNOWN',
-            'issued_at' => $data['issued_at'] ?? 0,
-            'expires_at' => $data['expires_at'] ?? 0,
+            'operator_id' => (int) ($data['operator_id'] ?? 0),
+            'terminal' => (string) ($data['terminal'] ?? ''),
+            'container' => (string) ($data['container'] ?? ''),
+            'action' => $action !== '' ? $action : 'UNKNOWN',
+            'issued_at' => (int) ($data['issued_at'] ?? 0),
+            'expires_at' => (int) ($data['expires_at'] ?? 0),
         ];
     }
 
-    /**
-     * Get the cryptographic algorithm used.
-     *
-     * @return string
-     */
     public function getAlgorithm(): string
     {
-        return $this->cipher;
+        return 'AES-256-CBC';
     }
 
-    /**
-     * Get the IV used for encryption.
-     *
-     * @return string
-     */
     public function getIv(): string
     {
         return $this->iv;
     }
 
-    /**
-     * Get the key length in bytes.
-     *
-     * @return int
-     */
+    public function getIvHex(): string
+    {
+        return bin2hex($this->iv);
+    }
+
     public function getKeyLength(): int
     {
         return strlen($this->key);

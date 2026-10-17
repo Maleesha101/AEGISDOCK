@@ -1,9 +1,10 @@
 const express = require('express');
-const cors = require('cors');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '32kb' }));
+
+// This service records simulated events only. It must never issue terminal commands.
+app.get('/health', (req, res) => res.json({ success: true, service: 'audit-service', mode: 'simulation-only' }));
 
 // Simulated terminal controller audit service
 // In production, this would be an actual industrial control system
@@ -107,33 +108,8 @@ app.get('/terminals/:code', (req, res) => {
     });
 });
 
-// POST /audit/terminals/:code/release - Simulate container release
-app.post('/terminals/:code/release', (req, res) => {
-    const { code } = req.params;
-    const { container, operator, authorization_artifact } = req.body;
-
-    // Log the release attempt
-    const logEntry = {
-        id: auditLog.length + 1,
-        timestamp: new Date().toISOString(),
-        event: 'CONTAINER_RELEASE_ATTEMPT',
-        terminal: code,
-        container: container || 'UNKNOWN',
-        operator: operator || 'UNKNOWN',
-        status: 'PROCESSED',
-        details: authorization_artifact ? 'Authorization artifact provided' : 'No artifact provided'
-    };
-    auditLog.push(logEntry);
-
-    res.json({
-        success: true,
-        message: `Container release command sent to terminal ${code}`,
-        terminal: code,
-        container,
-        status: 'RELEASED',
-        timestamp: new Date().toISOString()
-    });
-});
+// Terminal release is deliberately not implemented in this service.
+// Release authorization and simulated state changes belong to the Laravel API.
 
 app.listen(3000, () => {
     console.log('AegisDock Audit Service running on port 3000');

@@ -117,7 +117,8 @@ Get authorization artifact for terminal/container.
 {
   "success": true,
   "data": {
-    "artifact": "base64-ciphertext",
+    "id": 12,
+    "artifact": "base64-encoded-IV-plus-ciphertext",
     "terminal": "T-07",
     "container": "CONT-88421",
     "action": "VIEW",
@@ -129,7 +130,7 @@ Get authorization artifact for terminal/container.
 
 ### GET /api/debug/authorization/{id}
 
-Debug endpoint - get cryptographic metadata.
+Authenticated training debug endpoint - get cryptographic metadata. It never returns the encryption key. In secure mode it reports AES-256-GCM nonce metadata instead.
 
 **Response:**
 ```json
@@ -137,9 +138,10 @@ Debug endpoint - get cryptographic metadata.
   "success": true,
   "data": {
     "algorithm": "AES-256-CBC",
-    "iv": "TRAINING-FAKE-IV-1234567890ABC",
-    "ciphertext": "base64-ciphertext",
+    "iv": "hex-encoded-16-byte-iv",
+    "iv_length": 16,
     "ciphertext_length": 80,
+    "artifact": "base64-encoded-IV-plus-ciphertext",
     "metadata": {
       "operator_id": 1001,
       "terminal": "T-07",
@@ -151,6 +153,29 @@ Debug endpoint - get cryptographic metadata.
   }
 }
 ```
+
+## CTF flags
+
+### GET /api/flags
+
+List stage descriptions, points, and completion status for the authenticated user. Expected flag values are never included in this response.
+
+### POST /api/flags/submit
+
+Submit a discovered flag.
+
+```json
+{
+  "code": "FLAG-01",
+  "flag": "AEGIS{discovered-value}"
+}
+```
+
+The service compares the submitted value to a randomly generated local flag, then records the completion per user. Flag values are loaded from an ignored runtime-only secret file.
+
+### GET /api/security/verification
+
+Available to authenticated users in secure mode. Confirms that the secure runtime key is available and the removed legacy archive is absent from the final filesystem, then returns the remediation-stage flag.
 
 ## Audit
 

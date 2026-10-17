@@ -2,10 +2,7 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Config;
 use Exception;
-use SodiumException;
 
 class SecureCryptoService
 {
@@ -17,7 +14,13 @@ class SecureCryptoService
     public function __construct()
     {
         // SECURE: Key is injected at runtime, never stored in image
-        $this->key = base64_decode(config('crypto.secure_key'));
+        $encodedKey = config('crypto.secure_key');
+        $secretFile = config('crypto.secure_key_file', '/run/secrets/crypto_secure_key');
+        if ((!is_string($encodedKey) || $encodedKey === '') && is_readable($secretFile)) {
+            $encodedKey = trim((string) file_get_contents($secretFile));
+        }
+
+        $this->key = is_string($encodedKey) ? (base64_decode($encodedKey, true) ?: '') : '';
         if (!$this->key || strlen($this->key) !== $this->keyLength) {
             throw new Exception('Invalid or missing encryption key');
         }
@@ -49,7 +52,7 @@ class SecureCryptoService
             'action' => $action,
             'issued_at' => time(),
             'expires_at' => time() + 3600, // 1 hour expiry
-        ], JSON_PRESERVE_ZERO_ORDER);
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
         // Encrypt with authentication
         $ciphertext = sodium_crypto_aead_aes256gcm_encrypt(
@@ -78,7 +81,7 @@ class SecureCryptoService
      */
     public function decryptArtifact(string $artifact): array
     {
-        $decoded = base64_decode($artifact);
+        $decoded = base64_decode($artifact, true);
         if ($decoded === false) {
             throw new Exception('Invalid base64 encoding');
         }
@@ -104,7 +107,7 @@ class SecureCryptoService
             throw new Exception('Authentication failed - artifact integrity check failed');
         }
 
-        $data = json_decode($plaintext, true);
+        $data = json_decode($plaintext, true, 512, JSON_THROW_ON_ERROR);
         if ($data === null) {
             throw new Exception('Decrypted data is not valid JSON');
         }

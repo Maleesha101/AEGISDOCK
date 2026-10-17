@@ -1,0 +1,87 @@
+name: AegisDock validation
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_pgsql, pdo_mysql, pdo_sqlite, xml, gd, bcmath
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Initialize fake local-only build secrets
+        run: bash scripts/init-local-secrets.sh
+      - name: Validate Compose configurations
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.secure.yml config --quiet
+      - name: Validate Composer manifest
+        working-directory: api
+        run: composer validate --no-check-publish
+      - name: Install API dependencies
+        working-directory: api
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run API tests
+        working-directory: api
+        run: vendor/bin/pest -c phpunit.xml
+      - name: PHP syntax checks
+        run: find api/app api/bootstrap api/config api/database api/routes tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npm run lint
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Check Node service syntax
+        run: |
+          node --check registry-simulator/index.js
+          node --check audit-service/index.js
+      - name: Build vulnerable image
+        run: docker compose build --no-cache api
+      - name: Verify vulnerable image retains only historical layer secret
+        run: |
+          KEY_HEX="$(sed -n 's/^TERMINAL_CRYPTO_KEY_HEX=//p' secrets/terminal-gateway.env)"
+          FLAG_03="$(sed -n 's/^FLAG_03=//p' secrets/flags.env)"
+          FLAG_04="$(sed -n 's/^FLAG_04=//p' secrets/flags.env)"
+          test -n "$KEY_HEX"
+          docker save aegisdock/api:vulnerable -o /tmp/aegisdock-vulnerable.tar
+          grep -aF "$KEY_HEX" /tmp/aegisdock-vulnerable.tar
+          grep -aF "$FLAG_03" /tmp/aegisdock-vulnerable.tar
+          grep -aF "$FLAG_04" /tmp/aegisdock-vulnerable.tar
+          docker run --rm --entrypoint sh aegisdock/api:vulnerable -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
+      - name: Build secure image
+        run: docker compose -f docker-compose.yml -f docker-compose.secure.yml build --no-cache api
+      - name: Verify secure image excludes training secrets
+        run: |
+          KEY_HEX="$(sed -n 's/^TERMINAL_CRYPTO_KEY_HEX=//p' secrets/terminal-gateway.env)"
+          IV_HEX="$(sed -n 's/^TERMINAL_CRYPTO_IV_HEX=//p' secrets/terminal-gateway.env)"
+          FLAG_03="$(sed -n 's/^FLAG_03=//p' secrets/flags.env)"
+          FLAG_04="$(sed -n 's/^FLAG_04=//p' secrets/flags.env)"
+          SECURE_KEY="$(tr -d '\n' < secrets/secure_crypto_key)"
+          docker save aegisdock/api:secure -o /tmp/aegisdock-secure.tar
+          if grep -aF "$KEY_HEX" /tmp/aegisdock-secure.tar; then echo "Vulnerable key found in secure image"; exit 1; fi
+          if grep -aF "$IV_HEX" /tmp/aegisdock-secure.tar; then echo "Vulnerable IV found in secure image"; exit 1; fi
+          if grep -aF "$SECURE_KEY" /tmp/aegisdock-secure.tar; then echo "Secure key found in image"; exit 1; fi
+          if grep -aF "$FLAG_03" /tmp/aegisdock-secure.tar; then echo "Historical layer flag found in secure image"; exit 1; fi
+          if grep -aF "$FLAG_04" /tmp/aegisdock-secure.tar; then echo "Historical secret flag found in secure image"; exit 1; fi
+          docker run --rm --entrypoint sh aegisdock/api:secure -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
+      - name: Clean up generated secret fixtures
+        if: always()
+        run: |
+          rm -f deploy/archive/terminal-gateway.env.bak
+          rm -rf secrets
+          rm -f /tmp/aegisdock-vulnerable.tar /tmp/aegisdock-secure.tar

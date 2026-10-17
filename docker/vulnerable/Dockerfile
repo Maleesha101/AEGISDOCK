@@ -8,17 +8,18 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
+    libpq-dev \
     zip \
     unzip \
     git \
     curl \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd xml \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
+    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml \
+    && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
 
 # VULNERABILITY: DOCKER-01
 # Layer N: Copy deployment archive with crypto keys to old path
@@ -27,11 +28,10 @@ COPY deploy/archive/terminal-gateway.env.bak /opt/legacy/terminal-gateway.env.ba
 WORKDIR /var/www/html
 
 # Install Laravel dependencies
-COPY api/composer.json api/composer.lock ./
-RUN composer install --no-dev --optimize-autoloader
-
-# Copy application source
 COPY api/ ./
+
+# Artisan and bootstrap must exist before Composer's package-discovery script runs.
+RUN composer install --no-dev --optimize-autoloader
 
 # VULNERABILITY: DOCKER-02
 # Layer N+1: Remove the file (but old layer still contains it!)
@@ -42,9 +42,9 @@ RUN rm /opt/legacy/terminal-gateway.env.bak
 # command (DOCKER-01) placed the file in a layer that remains in the image
 # history, teaching learners to never store secrets in Docker images.
 
-# SECURITY BEST PRACTICE: Multi-stage builds prevent secret leakage.
-# In production, use .dockerignore, build-time secrets (ARG/ENV), or
-# external secret management (Vault, KMS) instead of hardcoding in Dockerfiles.
+# SECURITY BEST PRACTICE: Do not use ARG/ENV for secrets. Use a narrow
+# .dockerignore, BuildKit secret mounts for build-time needs, and runtime-only
+# secret injection (or a managed secret store) for application credentials.
 # EXPOSE port
 EXPOSE 80
 

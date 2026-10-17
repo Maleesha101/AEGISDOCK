@@ -47,39 +47,18 @@ const TerminalsPage: NextPage = () => {
               <div className="flex items-center">
                 <Link href="/" className="flex-shrink-0">
                   <img className="h-8 w-8" src="https://via.placeholder.com/40" alt="AegisDock" />
-                </div>
-                <div className="hidden md:block">
+                </Link>
+                <nav className="hidden md:block">
                   <div className="ml-10 flex items-baseline space-x-4">
-                    <Link
-                      href="/dashboard"
-                      className="px-3 pt-2 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    >
-                      Dashboard
-                    </Link>
-                    <Link
-                      href="/terminals"
-                      className="px-3 pt-2 border-b-2 border-navy-500 text-navy-600 border-b-2 font-medium"
-                    >
-                      Terminals
-                    </Link>
-                    <Link
-                      href="/containers"
-                      className="px-3 pt-2 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    >
-                      Containers
-                    </Link>
+                    <Link href="/dashboard" className="px-3 pt-2 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">Dashboard</Link>
+                    <Link href="/terminals" className="px-3 pt-2 border-b-2 border-navy-500 text-navy-600 font-medium">Terminals</Link>
+                    <Link href="/containers" className="px-3 pt-2 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">Containers</Link>
                   </div>
-                </div>
+                </nav>
               </div>
-
               <div className="hidden md:block">
                 <div className="ml-4 flex items-center md:ml-6">
-                  <button
-                    href="/terminals/new"
-                    className="px-4 py-2 bg-navy-600 hover:bg-navy-700 text-white font-medium rounded-lg text-sm"
-                  >
-                    New Terminal
-                  </button>
+                  <Link href="/terminals/new" className="px-4 py-2 bg-navy-600 hover:bg-navy-700 text-white font-medium rounded-lg text-sm">New Terminal</Link>
                 </div>
               </div>
             </div>
@@ -121,7 +100,7 @@ const TerminalsPage: NextPage = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
-                        <span className={`px-3 py-1 text-xs font-medium rounded-full {
+                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${
                           terminal.status === 'OPERATIONAL' ? 'bg-green-100 text-green-800' :
                           terminal.status === 'MAINTENANCE' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'

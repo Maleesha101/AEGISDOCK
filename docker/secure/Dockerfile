@@ -1,50 +1,20 @@
-# SECURE DOCKERFILE - AEGISDOCK Security Training Lab
-# This version uses runtime secret injection and never stores secrets in image layers.
-
+# Secure API image: no deployment archive or cryptographic key is copied into this image.
 FROM php:8.3-apache
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    zip \
-    unzip \
-    git \
-    curl \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd xml \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpng-dev libonig-dev libxml2-dev libpq-dev zip unzip git curl \
+    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml \
+    && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
 
 WORKDIR /var/www/html
-
-# Install Laravel dependencies
-COPY api/composer.json api/composer.lock ./
-RUN composer install --no-dev --optimize-autoloader
-
-# Copy application source - NO deployment secrets ever copied
 COPY api/ ./
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-# SECURE: Create directories for runtime secrets (mounted at runtime)
-RUN mkdir -p /run/secrets/credentials
-
-# SECURE: Never hardcode secrets in Docker image.
-# Secrets MUST be injected at runtime via:
-# - Docker secrets (Swarm/K8s)
-# - Environment variables with -e flags
-# - Volume mounts with secret files
-# - Kubernetes secret objects
-# - Docker run --secret flag
-#
-# The CRYPTO_KEY and CRYPTO_IV must NEVER be baked into the image.
-# They are expected to be available at runtime via environment.
-
-# Expose port
+# Runtime-only secret files are mounted by docker-compose.secure.yml.
+# The root .dockerignore excludes secrets/ and deploy/archive/ from this build.
 EXPOSE 80
-
-# Use environment variables for secrets, injected at runtime
 CMD ["apache2-foreground"]
