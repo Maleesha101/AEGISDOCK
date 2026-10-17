@@ -1,0 +1,20 @@
+# Dockerfile-specific ignore rules for the intentionally vulnerable image.
+# This file overrides the root .dockerignore for this build only.
+.git
+.git/**
+.env
+.env.*
+node_modules/
+frontend/node_modules/
+api/vendor/
+frontend/.next/
+*.pem
+*.key
+secrets/
+*.backup
+# Keep the single fake fixture so the vulnerable Dockerfile can copy it into
+# an earlier image layer. The root/secure build context excludes deploy/archive.
+*.bak
+!deploy/
+!deploy/archive/
+!deploy/archive/terminal-gateway.env.bak
