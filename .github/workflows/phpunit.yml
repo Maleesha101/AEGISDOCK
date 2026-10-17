@@ -32,7 +32,7 @@ jobs:
 
       - name: Run PHP tests
         working-directory: api
-        run: ./vendor/bin/phpunit -c phpunit.xml
+        run: ./vendor/bin/pest -c phpunit.xml
 
       - name: Install frontend dependencies
         working-directory: frontend
