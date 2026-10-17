@@ -6,6 +6,7 @@ FROM php:8.3-apache
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     libpng-dev \
+    libpq-dev \
     libonig-dev \
     libxml2-dev \
     zip \
@@ -28,10 +29,11 @@ WORKDIR /var/www/html
 
 # Install Laravel dependencies
 COPY api/composer.json ./
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 # Copy application source
 COPY api/ ./
+RUN composer dump-autoload --no-dev --optimize-autoloader
 
 # VULNERABILITY: DOCKER-02
 # Layer N+1: Remove the file (but old layer still contains it!)
