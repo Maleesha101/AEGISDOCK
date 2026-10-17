@@ -2,7 +2,7 @@ import type { NextPage } from 'next';
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { getContainers, getContainer, inspectContainer, holdContainer, releaseContainer, getAuthorizationArtifact } from '../utils/api';
+import { getContainers, getContainer, inspectContainer, holdContainer, releaseContainer,  } from '../utils/api';
 import { useRouter } from 'next/router';
 
 const ContainersPage: NextPage = () => {
@@ -58,23 +58,18 @@ const ContainersPage: NextPage = () => {
 
   const handleRelease = async (containerNumber: string) => {
     try {
-      // First get authorization artifact
-      const authRes = await getAuthorizationArtifact('T-07', containerNumber);
-      const authArtifact = authRes.data.ciphertext;
+      // Normal UI operations use server-side role authorization. The
+      // vulnerable artifact path remains available for manual lab investigation.
+      await releaseContainer(containerNumber, 'Authorized release');
 
-      // Then attempt release with the artifact
-      await releaseContainer(containerNumber, 'Authorized release', authArtifact);
-
-      // Refresh container data
       const res = await getContainer(containerNumber);
       setSelectedContainer(res.data);
-      // Refresh containers list
       const containersRes = await getContainers();
       setContainers(containersRes.data);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Release failed');
     }
-  };
+  };;
 
   if (loading) {
     return (
