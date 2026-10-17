@@ -2,6 +2,9 @@
 
 return [
 
+    'mode' => env('AEGISDOCK_MODE', 'vulnerable'),
+    'secure_key' => env('CRYPTO_SECURE_KEY'),
+
     /*
     |--------------------------------------------------------------------------
     | Encryption Key
