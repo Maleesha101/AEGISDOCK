@@ -30,8 +30,8 @@ services:
       - DB_DATABASE=aegisdock
       - DB_USERNAME=aegisdock
       - DB_PASSWORD=aegisdock_secret
-      - CRYPTO_KEY=TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12
-      - CRYPTO_IV=TRAINING-FAKE-IV-1234567890ABC
+      - CRYPTO_KEY=TRAINING-KEY-32-BYTES-ONLY-00000
+      - CRYPTO_IV=TRAINING-IV-1234
     depends_on:
       postgres:
         condition: service_healthy
