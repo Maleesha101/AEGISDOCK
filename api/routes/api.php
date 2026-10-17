@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\Api\AuthorizationController;
+use App\Http\Controllers\Api\FlagController;
+use App\Http\Controllers\Api\SecurityController;
 use App\Http\Controllers\Api\ContainerController;
 use App\Http\Controllers\Api\TerminalController;
 use Illuminate\Support\Facades\Route;
@@ -32,4 +34,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/authorization/artifact', [AuthorizationController::class, 'getArtifact']);
     Route::get('/audit', [AuditController::class, 'index']);
     Route::get('/debug/authorization/{id}', [AuthorizationController::class, 'debug']);
+
+    Route::get('/flags', [FlagController::class, 'index']);
+    Route::post('/flags/submit', [FlagController::class, 'submit'])->middleware('throttle:30,1');
+    Route::get('/security/verification', [SecurityController::class, 'verify']);
 });
