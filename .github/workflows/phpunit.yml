@@ -26,6 +26,10 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Prepare local test environment
+        working-directory: api
+        run: cp .env.example .env
+
       - name: Install PHP dependencies
         working-directory: api
         run: composer install --no-interaction --prefer-dist
