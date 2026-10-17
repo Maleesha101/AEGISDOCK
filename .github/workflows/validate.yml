@@ -29,6 +29,19 @@ jobs:
         run: vendor/bin/pest -c phpunit.xml
       - name: PHP syntax checks
         run: find api/app api/bootstrap api/config api/database api/routes tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npm run lint
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
       - name: Check Node service syntax
         run: |
           node --check registry-simulator/index.js
