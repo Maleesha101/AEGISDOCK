@@ -138,8 +138,10 @@ class ContainerController extends Controller
     {
         $container = Container::where('container_number', $containerNumber)->firstOrFail();
         $user = Auth::user();
+        $role = $user->roles->first()?->name;
+        $authArtifact = $request->header('X-Terminal-Authorization');
+        $secureMode = config('crypto.mode', 'vulnerable') === 'secure';
 
-        // Log the release attempt
         Log::channel('audit')->info('CONTAINER_RELEASE_ATTEMPT', [
             'user_id' => $user->id,
             'container' => $containerNumber,
@@ -147,31 +149,66 @@ class ContainerController extends Controller
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'action' => 'RELEASE',
+            'mode' => $secureMode ? 'secure' : 'vulnerable',
         ]);
 
-        $role = $user->roles->first()?->name;
+        if ($secureMode) {
+            // SECURE: authorization is decided from the authenticated identity
+            // and server-side role policy before any client artifact is considered.
+            if (!in_array($role, ['supervisor', 'security_admin'], true)) {
+                Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
+                    'user_id' => $user->id,
+                    'container' => $containerNumber,
+                    'reason' => 'role_not_authorized',
+                    'ip' => $request->ip(),
+                ]);
 
-        // Get authorization artifact from header
-        $authArtifact = $request->header('X-Terminal-Authorization');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Insufficient permissions - operator role cannot release containers',
+                ], 403);
+            }
 
-        // VULNERABILITY: CRYPTO-05
-        // Server-side role check exists BUT is overridden by the authorization artifact
-        // This is the core vulnerability - the application trusts the decrypted
-        // authorization artifact to override server-side permissions
-        if ($authArtifact) {
+            if ($authArtifact) {
+                try {
+                    $artifactData = app(\App\Services\SecureCryptoService::class)->decryptArtifact($authArtifact);
+
+                    $matchesRequest = (int) ($artifactData['operator_id'] ?? 0) === (int) $user->id
+                        && (string) ($artifactData['terminal'] ?? '') === (string) $container->terminal_id
+                        && (string) ($artifactData['container'] ?? '') === (string) $container->id
+                        && ($artifactData['action'] ?? '') === 'RELEASE';
+
+                    if (!$matchesRequest) {
+                        throw new \RuntimeException('Artifact does not match authenticated release context');
+                    }
+
+                    Log::channel('audit')->info('AUTHORIZATION_SUCCESS', [
+                        'user_id' => $user->id,
+                        'container' => $containerNumber,
+                        'mode' => 'secure',
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
+                        'user_id' => $user->id,
+                        'container' => $containerNumber,
+                        'reason' => 'invalid_secure_artifact',
+                        'ip' => $request->ip(),
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid authorization artifact',
+                    ], 403);
+                }
+            }
+        } elseif ($authArtifact) {
+            // VULNERABILITY: CRYPTO-05 / CRYPTO-06
+            // The vulnerable mode trusts the decrypted action and skips the
+            // server-side role check whenever an artifact is supplied.
             try {
-                // Decrypt the artifact
                 $artifactData = $this->crypto->decryptArtifact($authArtifact);
-
-                // VULNERABILITY: CRYPTO-05
-                // Trust the decrypted artifact's action completely
-                // This means if someone manipulates the ciphertext,
-                // the server will trust the decrypted action field
                 $authorizedAction = $artifactData['action'] ?? 'UNKNOWN';
 
-                // The vulnerable design still requires a RELEASE claim. CBC
-                // malleability is the intended way to demonstrate how that claim
-                // can be altered; an ordinary VIEW artifact must not release cargo.
                 if ($authorizedAction !== 'RELEASE') {
                     Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
                         'user_id' => $user->id,
@@ -186,23 +223,15 @@ class ContainerController extends Controller
                     ], 403);
                 }
 
-                // Log authorization success based on artifact
                 Log::channel('audit')->info('AUTHORIZATION_SUCCESS', [
                     'user_id' => $user->id,
                     'action' => $authorizedAction,
-                    'artifact_data' => $artifactData,
+                    'container' => $containerNumber,
                 ]);
-
-                // VULNERABILITY: CRYPTO-07
-                // The role check is bypassed because the authorization artifact
-                // is trusted to override server-side permissions
-                // Even if the user is an operator, if the artifact says RELEASE,
-                // the release proceeds
-
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
                     'user_id' => $user->id,
-                    'error' => $e->getMessage(),
+                    'reason' => 'invalid_vulnerable_artifact',
                     'ip' => $request->ip(),
                 ]);
 
@@ -211,22 +240,20 @@ class ContainerController extends Controller
                     'message' => 'Invalid authorization artifact',
                 ], 403);
             }
+        } elseif (!in_array($role, ['supervisor', 'security_admin'], true)) {
+            Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
+                'user_id' => $user->id,
+                'container' => $containerNumber,
+                'reason' => 'role_not_authorized',
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient permissions - operator role cannot release containers',
+            ], 403);
         }
 
-        // VULNERABILITY: CRYPTO-08
-        // If no artifact provided, check server-side role
-        // But if artifact IS provided, the artifact's action is trusted
-        if (!$authArtifact) {
-            // No artifact provided - use server-side role enforcement
-            if (!in_array($role, ['supervisor', 'security_admin'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient permissions - operator role cannot release containers',
-                ], 403);
-            }
-        }
-
-        // Check if container is already released
         if ($container->status === 'RELEASED') {
             return response()->json([
                 'success' => false,
@@ -234,12 +261,11 @@ class ContainerController extends Controller
             ], 400);
         }
 
-        // Update container status
+        // All release operations only mutate the local training database.
         $container->status = 'RELEASED';
         $container->save();
 
-        // Log successful release
-        $event = new ContainerEvent([
+        ContainerEvent::create([
             'container_id' => $container->id,
             'operator_id' => $user->id,
             'action' => 'RELEASE',
@@ -247,11 +273,10 @@ class ContainerController extends Controller
                 'reason' => $request->input('reason', 'scheduled release'),
                 'authorization_artifact' => $authArtifact ? 'provided' : 'none',
                 'role' => $role,
+                'mode' => $secureMode ? 'secure' : 'vulnerable',
             ],
         ]);
-        $event->save();
 
-        // Log the release
         Log::channel('audit')->info('CONTAINER_RELEASE', [
             'user_id' => $user->id,
             'container' => $containerNumber,
