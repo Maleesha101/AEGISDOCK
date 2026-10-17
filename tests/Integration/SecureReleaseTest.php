@@ -154,3 +154,34 @@ test('secure crypto validates artifact expiration', function () {
     $this->expectException(Exception::class);
     $crypto->decryptArtifact($expiredArtifact);
 });
+test('supervisor release rejects a tampered secure artifact at the API boundary', function () {
+    $supervisor = User::where('email', 'supervisor@aegisdock.local')->first();
+    Sanctum::actingAs($supervisor, ['*']);
+
+    $container = Container::where('container_number', 'CONT-88421')->first();
+    $terminal = Terminal::where('code', 'T-07')->first();
+
+    $crypto = new SecureCryptoService();
+    $artifact = $crypto->generateArtifact($supervisor->id, $terminal->id, $container->id, 'RELEASE');
+    $decoded = base64_decode($artifact, true);
+    $lastIndex = strlen($decoded) - 1;
+    $decoded[$lastIndex] = chr(ord($decoded[$lastIndex]) ^ 0x01);
+    $tamperedArtifact = base64_encode($decoded);
+
+    $this->withHeaders(['X-Terminal-Authorization' => $tamperedArtifact])
+        ->postJson("/api/containers/{$container->container_number}/release", [
+            'reason' => 'tamper verification',
+        ])
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Invalid authorization artifact');
+
+    $this->assertDatabaseHas('containers', [
+        'id' => $container->id,
+        'status' => 'READY',
+    ]);
+    $this->assertDatabaseHas('audit_logs', [
+        'action' => 'AUTHORIZATION_FAILURE',
+        'resource_id' => 'CONT-88421',
+    ]);
+});
+
