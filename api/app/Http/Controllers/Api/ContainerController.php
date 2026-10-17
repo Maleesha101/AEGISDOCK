@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Container;
 use App\Models\ContainerEvent;
 use App\Services\AuditLogger;
+use App\Services\FlagService;
 use App\Services\SecureCryptoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -56,6 +57,7 @@ class ContainerController extends Controller
             'success' => true,
             'message' => 'Container inspected successfully',
             'data' => $container->load('terminal'),
+            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-08') : null,
         ]);
     }
 
@@ -125,6 +127,7 @@ class ContainerController extends Controller
             'user_agent' => $request->userAgent(),
             'action' => 'RELEASE',
             'mode' => $secureMode ? 'secure' : 'vulnerable',
+            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-09') : null,
         ]);
 
         if ($secureMode) {
@@ -193,6 +196,7 @@ class ContainerController extends Controller
                     'mode' => 'vulnerable',
                     'decision_source' => 'decrypted_client_artifact',
                     'artifact_action' => $authorizedAction,
+                    'flag' => app(FlagService::class)->valueFor('FLAG-07'),
                 ]);
             } catch (\Throwable) {
                 $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
