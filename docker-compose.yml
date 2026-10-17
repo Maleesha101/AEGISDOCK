@@ -18,6 +18,7 @@ services:
 
   # Laravel API. Kept off the host-published interface.
   api:
+    image: aegisdock/api:vulnerable
     build:
       context: .
       dockerfile: docker/vulnerable/Dockerfile
@@ -33,11 +34,11 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-aegisdock_local_only}
       - CRYPTO_KEY=${CRYPTO_KEY:-AEGISDOCK-TRAINING-KEY-32-BYTES!}
       - CRYPTO_IV=${CRYPTO_IV:-AEGIS-STATIC-IV!}
-    volumes:
-      - ./api:/var/www/html
     depends_on:
-      - postgres
-      - registry-simulator
+      postgres:
+        condition: service_healthy
+      registry-simulator:
+        condition: service_started
     networks:
       - aegisdock-net
     restart: unless-stopped
@@ -84,6 +85,8 @@ services:
       dockerfile: Dockerfile
     expose:
       - "3000"
+    volumes:
+      - ./registry-simulator/artifacts:/artifacts:ro
     networks:
       - aegisdock-net
     restart: unless-stopped
