@@ -16,7 +16,7 @@ umask 077
 mkdir -p "${SECRETS_DIR}" "${ARCHIVE_DIR}"
 chmod 700 "${SECRETS_DIR}"
 
-if [[ ! -s "${RUNTIME_FILE}" ]]; then
+if [[ ! -s "${RUNTIME_FILE}" ]] || ! grep -q '^TERMINAL_CRYPTO_KEY_HEX=' "${RUNTIME_FILE}" || ! grep -q '^TERMINAL_CRYPTO_IV_HEX=' "${RUNTIME_FILE}"; then
   key_hex="$(openssl rand -hex 32)"
   iv_hex="$(openssl rand -hex 16)"
   cat > "${RUNTIME_FILE}" <<EOF
