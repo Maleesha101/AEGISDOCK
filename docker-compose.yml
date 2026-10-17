@@ -24,6 +24,7 @@ services:
       - "80"
     environment:
       - APP_ENV=local
+      - APP_KEY=base64:MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=
       - APP_DEBUG=false
       - DB_HOST=postgres
       - DB_PORT=5432
