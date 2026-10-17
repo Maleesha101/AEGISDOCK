@@ -64,6 +64,7 @@ class AuthorizationController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                'id' => $artifact->id,
                 'artifact' => $ciphertext,
                 'terminal' => $terminal->code,
                 'container' => $container->container_number,
