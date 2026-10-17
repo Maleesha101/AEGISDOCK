@@ -74,12 +74,12 @@ const TerminalsPage: NextPage = () => {
 
               <div className="hidden md:block">
                 <div className="ml-4 flex items-center md:ml-6">
-                  <button
+                  <Link
                     href="/terminals/new"
                     className="px-4 py-2 bg-navy-600 hover:bg-navy-700 text-white font-medium rounded-lg text-sm"
                   >
                     New Terminal
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
