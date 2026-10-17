@@ -35,13 +35,13 @@ build-secure: ## Alias for secure-build
 	docker build -t aegisdock/api:secure -f docker/secure/Dockerfile .
 
 test: ## Run tests
-	cd api && ./vendor/bin/phpunit
+	cd api && ./vendor/bin/pest -c phpunit.xml
 
 scan: ## Scan vulnerable image for secrets
 	docker history aegisdock/api:vulnerable --no-trunc
 
 lint: ## Run code linting and static analysis
-	cd api && ./vendor/bin/phpunit --filter=skip
+	cd api && ./vendor/bin/pest -c phpunit.xml --filter=skip
 	@composer --working-dir=api lint 2>/dev/null || echo "No dedicated lint script"
 
 clean: ## Stop and remove all containers/volumes
