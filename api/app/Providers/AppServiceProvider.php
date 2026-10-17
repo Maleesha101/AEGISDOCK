@@ -17,9 +17,6 @@ class AppServiceProvider extends ServiceProvider
             return new CryptoService();
         });
 
-        // Bind key and iv for debug endpoint
-        $this->app->instance('crypto.key', config('crypto.key'));
-        $this->app->instance('crypto.iv', config('crypto.iv'));
     }
 
     /**
