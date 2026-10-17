@@ -9,3 +9,4 @@ api/vendor/
 secrets/
 **/*.pem
 **/*.key
+api/.env.example
