@@ -9,3 +9,10 @@ secrets/
 *.bak
 *.backup
 *.env.*
+node_modules/
+**/node_modules/
+api/vendor/
+frontend/.next/
+frontend/out/
+coverage/
+**/coverage/
