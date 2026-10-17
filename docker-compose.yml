@@ -1,30 +1,30 @@
 version: '3.8'
 
 services:
-  # Frontend - Next.js application
+  # Only the reverse proxy is published, and only on loopback.
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NEXT_PUBLIC_API_URL=/api
+    expose:
+      - "3000"
     depends_on:
       - api
     networks:
       - aegisdock-net
 
-  # Backend API - Laravel application
+  # Backend API - intentionally vulnerable behavior is confined to the lab.
   api:
     build:
       context: .
       dockerfile: docker/vulnerable/Dockerfile
-    ports:
-      - "8000:80"
+    expose:
+      - "80"
     environment:
       - APP_ENV=local
-      - APP_DEBUG=true
+      - APP_DEBUG=false
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_DATABASE=aegisdock
@@ -32,70 +32,73 @@ services:
       - DB_PASSWORD=aegisdock_secret
       - CRYPTO_KEY=TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12
       - CRYPTO_IV=TRAINING-FAKE-IV-1234567890ABC
-    volumes:
-      - ./api:/var/www/html
     depends_on:
-      - postgres
-      - registry-simulator
+      postgres:
+        condition: service_healthy
+      registry-simulator:
+        condition: service_started
     networks:
       - aegisdock-net
 
-  # Nginx reverse proxy
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
       - frontend
       - api
+      - registry-simulator
+      - audit-service
     networks:
       - aegisdock-net
+    restart: unless-stopped
 
-  # PostgreSQL database
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_DB=aegisdock
-      - POSTGRES_USER=aegisdock
-      - POSTGRES_PASSWORD=aegisdock_secret
+      POSTGRES_DB: aegisdock
+      POSTGRES_USER: aegisdock
+      POSTGRES_PASSWORD: aegisdock_secret
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegisdock -d aegisdock"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    expose:
+      - "5432"
     networks:
       - aegisdock-net
 
-  # Registry Simulator - simulates exposed internal container image
   registry-simulator:
     build:
       context: ./registry-simulator
       dockerfile: Dockerfile
-    ports:
-      - "5000:3000"
+    expose:
+      - "3000"
     networks:
       - aegisdock-net
 
-  # Audit Service
   audit-service:
     build:
       context: ./audit-service
       dockerfile: Dockerfile
-    ports:
-      - "9000:3000"
     environment:
-      - API_URL=http://api:8000
-    networks:
-      - aegisdock-net
+      - API_URL=http://api:80
+    expose:
+      - "3000"
     depends_on:
       - api
+    networks:
+      - aegisdock-net
 
 networks:
   aegisdock-net:
-    driver: bridge
+    name: aegisdock-lab
+    internal: true
 
 volumes:
   postgres_data:
