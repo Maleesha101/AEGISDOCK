@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  # Only the reverse proxy is published, and only on loopback.
+  # Only Nginx is published to the host, and only on loopback.
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      - NEXT_PUBLIC_API_URL=/api
+      - NEXT_PUBLIC_API_URL=
     expose:
       - "3000"
     depends_on:
@@ -15,7 +15,7 @@ services:
     networks:
       - aegisdock-net
 
-  # Backend API - intentionally vulnerable behavior is confined to the lab.
+  # Intentionally vulnerable API for the isolated training exercise.
   api:
     build:
       context: .
