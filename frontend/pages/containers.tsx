@@ -98,7 +98,7 @@ const ContainersPage: NextPage = () => {
               <div className="flex items-center">
                 <Link href="/" className="flex-shrink-0">
                   <img className="h-8 w-8" src="https://via.placeholder.com/40" alt="AegisDock" />
-                </div>
+                </Link>
                 <div className="hidden md:block">
                   <div className="ml-10 flex items-baseline space-x-4">
                     <Link
@@ -178,12 +178,7 @@ const ContainersPage: NextPage = () => {
                           </div>
                         </div>
                         <div className="flex items-center space-x-3">
-                          <span className={`px-3 py-1 text-xs font-medium rounded-full {
-                            container.status === 'READY' ? 'bg-green-100 text-green-800' :
-                            container.status === 'HELD' ? 'bg-yellow-100 text-yellow-800' :
-                            container.status === 'RELEASED' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
+                          <span className={`px-3 py-1 text-xs font-medium rounded-full ${container.status === 'READY' ? 'bg-green-100 text-green-800' : container.status === 'HELD' ? 'bg-yellow-100 text-yellow-800' : container.status === 'RELEASED' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
                             {container.status}
                           </span>
                           <div className="flex space-x-2">
@@ -258,12 +253,7 @@ const ContainersPage: NextPage = () => {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-500">Status</p>
-                        <p className={`text-lg font-medium {
-                          selectedContainer.status === 'READY' ? 'text-green-600' :
-                          selectedContainer.status === 'HELD' ? 'text-yellow-600' :
-                          selectedContainer.status === 'RELEASED' ? 'text-blue-600' :
-                          'text-gray-600'
-                        }`}>
+                        <p className={`text-lg font-medium ${selectedContainer.status === 'READY' ? 'text-green-600' : selectedContainer.status === 'HELD' ? 'text-yellow-600' : selectedContainer.status === 'RELEASED' ? 'text-blue-600' : 'text-gray-600'}`}>
                           {selectedContainer.status}
                         </p>
                       </div>
