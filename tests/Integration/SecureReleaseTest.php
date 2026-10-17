@@ -14,6 +14,7 @@ beforeEach(function () {
     $this->seed(DatabaseSeeder::class);
 
     // Set up secure crypto for testing
+    config()->set('crypto.mode', 'secure');
     config()->set('crypto.secure_key', base64_encode(random_bytes(32)));
 });
 
