@@ -1,0 +1,17 @@
+# Secure profile override. Start with:
+# docker compose -f docker-compose.yml -f docker-compose.secure.yml up --build -d
+services:
+  api:
+    image: aegisdock/api:secure
+    build:
+      context: .
+      dockerfile: docker/secure/Dockerfile
+    environment:
+      - AEGISDOCK_MODE=secure
+      - CRYPTO_SECURE_KEY_FILE=/run/secrets/crypto_secure_key
+    secrets:
+      - crypto_secure_key
+
+secrets:
+  crypto_secure_key:
+    file: ./secrets/secure_crypto_key
