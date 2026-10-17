@@ -120,12 +120,12 @@ const ContainersPage: NextPage = () => {
 
               <div className="hidden md:block">
                 <div className="ml-4 flex items-center md:ml-6">
-                  <button
+                  <Link
                     href="/containers/new"
                     className="px-4 py-2 bg-navy-600 hover:bg-navy-700 text-white font-medium rounded-lg text-sm"
                   >
                     New Container
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
