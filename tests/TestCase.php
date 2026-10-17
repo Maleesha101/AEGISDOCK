@@ -22,8 +22,8 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         // Set up vulnerable crypto config for testing
-        config()->set('crypto.key', 'TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12');
-        config()->set('crypto.iv', 'TRAINING-FAKE-IV-1234567890ABC');
+        config()->set('crypto.key', 'AEGISDOCK-TRAINING-KEY-32-BYTES!');
+        config()->set('crypto.iv', 'AEGIS-STATIC-IV!');
         config()->set('crypto.secure_key', base64_encode(random_bytes(32)));
     }
 }
