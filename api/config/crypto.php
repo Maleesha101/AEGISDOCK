@@ -14,7 +14,7 @@ return [
     | In training, learners must recover this from the Docker image history.
     |
     */
-    'key' => env('CRYPTO_KEY', 'TRAINING-KEY-32-BYTES-ONLY-00000'),
+    'key' => env('CRYPTO_KEY', ''),
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,6 @@ return [
     |
     | This should be recovered along with the key from Docker image layers.
     */
-    'iv' => env('CRYPTO_IV', 'TRAINING-IV-1234'),
+    'iv' => env('CRYPTO_IV', ''),
 
 ];
