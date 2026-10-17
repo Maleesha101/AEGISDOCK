@@ -1,0 +1,29 @@
+name: AegisDock validation
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_pgsql, pdo_mysql, xml, gd, bcmath
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Validate Composer manifest
+        working-directory: api
+        run: composer validate --no-check-publish
+      - name: PHP syntax checks
+        run: find api -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Check Node service syntax
+        run: |
+          node --check registry-simulator/index.js
+          node --check audit-service/index.js
