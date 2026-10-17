@@ -46,6 +46,7 @@ const AuditPage: NextPage = () => {
               <div className="flex items-center">
                 <Link href="/" className="flex-shrink-0">
                   <img className="h-8 w-8" src="https://via.placeholder.com/40" alt="AegisDock" />
+                </Link>
                 </div>
                 <div className="hidden md:block">
                   <div className="ml-10 flex items-baseline space-x-4">
