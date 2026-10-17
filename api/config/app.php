@@ -14,9 +14,4 @@ return [
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
     ],
-    'providers' => [
-        App\Providers\AppServiceProvider::class,
-        Laravel\Sanctum\SanctumServiceProvider::class,
-        Spatie\Permission\PermissionServiceProvider::class,
-    ],
 ];
