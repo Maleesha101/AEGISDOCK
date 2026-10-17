@@ -190,3 +190,22 @@ trivy image aegisdock/api:secure
 - An unauthenticated IV can change the first plaintext block predictably.
 - Encrypted client data is not a substitute for server-side authorization.
 - AEAD, runtime-only secrets, role checks, and regression tests break different links in the chain.
+
+## 11. Flag locations
+
+Flag values are generated randomly by the local setup script. Never paste actual generated values into documentation or commit them.
+
+| Flag | Discovery point |
+|---|---|
+| FLAG-01 | Registry image list response |
+| FLAG-02 | Registry image detail response |
+| FLAG-03 | Historical image layer archive |
+| FLAG-04 | Historical deployment configuration alongside the recovered key/IV |
+| FLAG-05 | Authenticated authorization debug metadata |
+| FLAG-06 | Authorization artifact response |
+| FLAG-07 | `AUTHORIZATION_SUCCESS` audit record after a vulnerable artifact is accepted |
+| FLAG-08 | Vulnerable simulated release response |
+| FLAG-09 | `CONTAINER_RELEASE` database audit record |
+| FLAG-10 | `GET /api/security/verification` in secure mode |
+
+Authenticated learners submit discovered values through `POST /api/flags/submit`. The database stores the user/code completion, not the flag value itself.
