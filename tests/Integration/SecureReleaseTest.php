@@ -10,7 +10,6 @@ uses(Tests\TestCase::class);
 
 beforeEach(function () {
     // Clear and reseed test database
-    $this->artisan('migrate:fresh');
     $this->artisan('db:seed');
 
     // Set up secure crypto for testing
