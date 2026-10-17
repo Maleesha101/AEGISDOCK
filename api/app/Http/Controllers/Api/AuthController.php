@@ -3,24 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
+use App\Services\AuditLogger;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
-    /**
-     * Login a user.
-     */
     public function login(Request $request)
     {
-        // VULNERABILITY: AUTH-01
-        // No rate limiting on login attempts
-        // Intentionally left vulnerable for training purposes
-
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'password' => 'required|string',
@@ -34,17 +26,34 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('email', $request->input('email'))->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (!$user || !Hash::check($request->input('password'), $user->password)) {
+            app(AuditLogger::class)->record(
+                $request,
+                'LOGIN',
+                'user',
+                $user?->id,
+                ['result' => 'failure', 'email' => $request->input('email')],
+                $user?->id
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid credentials',
             ], 401);
         }
 
-        // Create token
         $token = $user->createToken('aegisdock-token')->plainTextToken;
+
+        app(AuditLogger::class)->record(
+            $request,
+            'LOGIN',
+            'user',
+            $user->id,
+            ['result' => 'success'],
+            $user->id
+        );
 
         return response()->json([
             'success' => true,
@@ -60,9 +69,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Get authenticated user.
-     */
     public function me(Request $request)
     {
         $user = $request->user();
