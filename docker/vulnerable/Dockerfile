@@ -26,11 +26,10 @@ COPY deploy/archive/terminal-gateway.env.bak /opt/legacy/terminal-gateway.env.ba
 WORKDIR /var/www/html
 
 # Install Laravel dependencies
-COPY api/composer.json api/composer.lock ./
-RUN composer install --no-dev --optimize-autoloader
-
-# Copy application source
 COPY api/ ./
+
+# Artisan and bootstrap must exist before Composer's package-discovery script runs.
+RUN composer install --no-dev --optimize-autoloader
 
 # VULNERABILITY: DOCKER-02
 # Layer N+1: Remove the file (but old layer still contains it!)
