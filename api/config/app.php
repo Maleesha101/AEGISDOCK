@@ -1,7 +1,5 @@
 <?php
 
-use App\Providers\AppServiceProvider;
-
 return [
     'name' => env('APP_NAME', 'AegisDock'),
     'env' => env('APP_ENV', 'production'),
@@ -18,8 +16,5 @@ return [
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
-    ],
-    'providers' => [
-        AppServiceProvider::class,
     ],
 ];
