@@ -1,43 +1,45 @@
-name: PHPUnit
+name: AegisDock CI
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [master, develop, "feat/**"]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   test:
-    name: Run PHPUnit Tests
+    name: PHP and frontend checks
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: password
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7
-        ports: ['6379:6379']
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install PHP Dependencies
-        run: cd api && composer install --no-interaction --prefer-dist
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, pdo_pgsql, pdo_sqlite, bcmath, gd, xml, sodium
+          coverage: none
 
-      - name: Install JavaScript Dependencies
-        run: cd frontend && npm ci
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Run PHPUnit Tests
-        run: cd api && ./vendor/bin/phpunit
+      - name: Install PHP dependencies
+        working-directory: api
+        run: composer install --no-interaction --prefer-dist
 
-      - name: Run Frontend Tests
-        run: cd frontend && npm test
+      - name: Run PHP tests
+        working-directory: api
+        run: ./vendor/bin/phpunit -c phpunit.xml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Check frontend types
+        working-directory: frontend
+        run: npm test
