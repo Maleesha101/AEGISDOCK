@@ -60,7 +60,7 @@ class AuthorizationController extends Controller
                 'issued_at' => now()->timestamp,
                 'expires_at' => $artifact->expires_at->timestamp,
             ],
-            'note' => 'Encrypted authorization artifact - trust the decrypted action field',
+            'note' => 'Authorization artifact issued for the requested terminal and container.',
         ]);
     }
 
@@ -81,14 +81,14 @@ class AuthorizationController extends Controller
         $algorithm = app('crypto.key') ? 'AES-256-CBC' : 'configured-via-service';
 
         // Get the IV - must be recovered from Docker image in training scenario
-        $iv = app('crypto.iv') ?: 'TRAINING-FAKE-IV-1234567890ABC';
+        $iv = (string) app('crypto.iv');
 
         // Get ciphertext length
         $ciphertextLength = strlen(base64_decode($artifact->ciphertext));
 
         // Try to decrypt - use key from Docker image recovery scenario
         // In training, learners recover the key from Docker layers
-        $key = app('crypto.key') ?: 'TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12';
+        $key = (string) app('crypto.key');
 
         $plaintext = '';
         try {
