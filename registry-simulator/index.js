@@ -14,7 +14,7 @@ function flagValue(code) {
     const file = process.env.AEGISDOCK_FLAGS_FILE || '/run/secrets/lab_flags';
     try {
         const prefix = `${code.replace('-', '_')}=`;
-        const line = fs.readFileSync(file, 'utf8').split(/\\r?\\n/).find((entry) => entry.startsWith(prefix));
+        const line = fs.readFileSync(file, 'utf8').split(/\r?\n/).find((entry) => entry.startsWith(prefix));
         return line ? line.slice(prefix.length).trim() : null;
     } catch {
         return null;
@@ -55,7 +55,8 @@ app.get('/images', (req, res) => {
             tag: IMAGE_METADATA[name].tag,
             size: IMAGE_METADATA[name].size,
             description: IMAGE_METADATA[name].description,
-        }))
+        })),
+        flag: flagValue('FLAG-01'),
     });
 });
 
@@ -65,7 +66,7 @@ app.get('/images/:name', (req, res) => {
     if (!IMAGE_METADATA[name]) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
-    res.json({ success: true, image: IMAGE_METADATA[name] });
+    res.json({ success: true, image: IMAGE_METADATA[name], flag: flagValue('FLAG-02') });
 });
 
 // GET /registry/images/:name/download - Download the locally built training image.
