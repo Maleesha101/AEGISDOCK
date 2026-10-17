@@ -1,0 +1,11 @@
+# Dockerfile-specific ignore file for the deliberately vulnerable image.
+# This overrides the repository-root .dockerignore for this build.
+# The archive is intentionally included so its historical layer can be studied.
+.git
+.git/**
+frontend/node_modules/
+frontend/.next/
+api/vendor/
+secrets/
+**/*.pem
+**/*.key
