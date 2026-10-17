@@ -20,8 +20,6 @@
         <env name="APP_ENV" value="testing"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
-        <env name="CRYPTO_KEY" value="AEGISDOCK-TRAINING-KEY-32-BYTES!"/>
-        <env name="CRYPTO_IV" value="AEGIS-STATIC-IV!"/>
         <env name="BROADCAST_DRIVER" value="null"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="MAIL_MAILER" value="array"/>
