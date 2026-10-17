@@ -2,55 +2,82 @@
 
 namespace Tests\Integration;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\WithFaker;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\Container;
-use App\Models\AuthorizationArtifact;
+use App\Models\User;
+use App\Services\CryptoService;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
 
-/**
- * Test the vulnerable container release flow.
- * 
- * This test validates the attack chain from reconnaissance
- * through unauthorized container release.
- */
 class VulnerableReleaseTest extends TestCase
 {
-    use RefreshDatabase;
-
-    /** @test */
-    public function test_vulnerable_container_release_without_auth()
+    public function test_unauthenticated_release_is_rejected(): void
     {
-        // Arrange - create a container with authorization artifact
-        $container = Container::factory()->create([
-            'status' => 'held',
-        ]);
+        $response = $this->postJson('/api/containers/CONT-88421/release');
 
-        $artifact = AuthorizationArtifact::factory()->create([
-            'container_id' => $container->id,
-            'valid' => true,
-        ]);
-
-        // Act - attempt release without proper authorization
-        $response = $this->postJson('/api/containers/' . $container->id . '/release');
-
-        // Assert - should be forbidden in secure mode,
-        // but vulnerable mode allows the release
-        $response->assertStatus(200)
-            ->assertJsonStructure(['status', 'container_id']);
+        $response->assertUnauthorized();
     }
 
-    /** @test */
-    public function test_crypto_analysis_endpoint_returns_aes_info()
+    public function test_operator_artifact_action_is_trusted_in_vulnerable_mode(): void
     {
-        // Arrange
-        $container = Container::factory()->create();
+        $this->seed();
 
-        // Act
-        $response = $this->getJson('/api/crypto/analysis');
+        $operator = User::where('email', 'operator@aegisdock.local')->firstOrFail();
+        $container = Container::where('container_number', 'CONT-88421')->firstOrFail();
+        $terminal = $container->terminal;
 
-        // Assert - should return cryptographic material info
-        $response->assertStatus(200)
-            ->assertSee('aes');
+        Sanctum::actingAs($operator);
+
+        // The test constructs a RELEASE artifact directly to exercise the
+        // vulnerable authorization decision. The learner's path to that
+        // artifact is documented separately in the lab exercise.
+        $artifact = app(CryptoService::class)->generateArtifact(
+            $operator->id,
+            $terminal->id,
+            $container->id,
+            'RELEASE'
+        );
+
+        $response = $this->postJson(
+            '/api/containers/CONT-88421/release',
+            ['reason' => 'local training test'],
+            ['X-Terminal-Authorization' => $artifact]
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'RELEASED');
+
+        $this->assertDatabaseHas('containers', [
+            'id' => $container->id,
+            'status' => 'RELEASED',
+        ]);
+    }
+
+    public function test_view_artifact_does_not_authorize_release(): void
+    {
+        $this->seed();
+
+        $operator = User::where('email', 'operator@aegisdock.local')->firstOrFail();
+        $container = Container::where('container_number', 'CONT-88421')->firstOrFail();
+        $terminal = $container->terminal;
+        Sanctum::actingAs($operator);
+
+        $artifact = app(CryptoService::class)->generateArtifact(
+            $operator->id,
+            $terminal->id,
+            $container->id,
+            'VIEW'
+        );
+
+        $this->postJson(
+            '/api/containers/CONT-88421/release',
+            ['reason' => 'local training test'],
+            ['X-Terminal-Authorization' => $artifact]
+        )->assertForbidden();
+
+        $this->assertDatabaseHas('containers', [
+            'id' => $container->id,
+            'status' => 'READY',
+        ]);
     }
 }
