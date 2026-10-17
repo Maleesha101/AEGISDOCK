@@ -31,8 +31,11 @@ services:
       - DB_USERNAME=${POSTGRES_USER:-aegisdock}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-aegisdock_local_only}
       - CRYPTO_KEY_FILE=/run/secrets/terminal-gateway.env
+      - AEGISDOCK_FLAGS_FILE=/run/secrets/lab_flags
     volumes:
       - ./secrets/terminal-gateway.env:/run/secrets/terminal-gateway.env:ro
+    secrets:
+      - lab_flags
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +89,10 @@ services:
       - "3000"
     volumes:
       - ./registry-simulator/artifacts:/artifacts:ro
+    environment:
+      - AEGISDOCK_FLAGS_FILE=/run/secrets/lab_flags
+    secrets:
+      - lab_flags
     networks:
       - aegisdock-net
     restart: unless-stopped
@@ -108,6 +115,10 @@ services:
 networks:
   aegisdock-net:
     driver: bridge
+
+secrets:
+  lab_flags:
+    file: ./secrets/flags.env
 
 volumes:
   postgres_data:
