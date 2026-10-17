@@ -5,22 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Container;
 use App\Models\ContainerEvent;
-use App\Models\AuthorizationArtifact;
-use App\Models\Terminal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 
 class ContainerController extends Controller
 {
-    protected CryptoService $crypto;
-
-    public function __construct(CryptoService $crypto)
-    {
-        $this->crypto = $crypto;
-    }
-
     /**
      * Get all containers.
      */
