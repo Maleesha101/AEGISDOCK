@@ -2,55 +2,75 @@
 
 namespace Tests\Integration;
 
+use Database\Seeders\DatabaseSeeder;
 use Tests\TestCase;
-use Illuminate\Foundation\Testing\WithFaker;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\Container;
-use App\Models\AuthorizationArtifact;
 
-/**
- * Test the vulnerable container release flow.
- * 
- * This test validates the attack chain from reconnaissance
- * through unauthorized container release.
- */
 class VulnerableReleaseTest extends TestCase
 {
-    use RefreshDatabase;
-
-    /** @test */
-    public function test_vulnerable_container_release_without_auth()
+    protected function setUp(): void
     {
-        // Arrange - create a container with authorization artifact
-        $container = Container::factory()->create([
-            'status' => 'held',
-        ]);
-
-        $artifact = AuthorizationArtifact::factory()->create([
-            'container_id' => $container->id,
-            'valid' => true,
-        ]);
-
-        // Act - attempt release without proper authorization
-        $response = $this->postJson('/api/containers/' . $container->id . '/release');
-
-        // Assert - should be forbidden in secure mode,
-        // but vulnerable mode allows the release
-        $response->assertStatus(200)
-            ->assertJsonStructure(['status', 'container_id']);
+        parent::setUp();
+        $this->seed(DatabaseSeeder::class);
     }
 
-    /** @test */
-    public function test_crypto_analysis_endpoint_returns_aes_info()
+    private function tokenFor(string $email, string $password): string
     {
-        // Arrange
-        $container = Container::factory()->create();
+        $response = $this->postJson('/api/login', [
+            'email' => $email,
+            'password' => $password,
+        ]);
 
-        // Act
-        $response = $this->getJson('/api/crypto/analysis');
+        $response->assertOk()->assertJsonPath('success', true);
 
-        // Assert - should return cryptographic material info
-        $response->assertStatus(200)
-            ->assertSee('aes');
+        return $response->json('token');
+    }
+
+    public function test_operational_endpoints_require_authentication(): void
+    {
+        $this->getJson('/api/containers')->assertUnauthorized();
+    }
+
+    public function test_operator_can_login_and_read_own_profile(): void
+    {
+        $token = $this->tokenFor('operator@aegisdock.local', 'Operator123!');
+
+        $this->withToken($token)
+            ->getJson('/api/me')
+            ->assertOk()
+            ->assertJsonPath('user.email', 'operator@aegisdock.local')
+            ->assertJsonPath('user.role.name', 'operator');
+    }
+
+    public function test_operator_cannot_release_container_without_artifact(): void
+    {
+        $token = $this->tokenFor('operator@aegisdock.local', 'Operator123!');
+
+        $this->withToken($token)
+            ->postJson('/api/containers/CONT-88421/release', [
+                'reason' => 'authorization boundary test',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('containers', [
+            'container_number' => 'CONT-88421',
+            'status' => 'READY',
+        ]);
+    }
+
+    public function test_supervisor_can_release_simulated_container(): void
+    {
+        $token = $this->tokenFor('supervisor@aegisdock.local', 'Supervisor123!');
+
+        $this->withToken($token)
+            ->postJson('/api/containers/CONT-88421/release', [
+                'reason' => 'authorized training release',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('containers', [
+            'container_number' => 'CONT-88421',
+            'status' => 'RELEASED',
+        ]);
     }
 }
