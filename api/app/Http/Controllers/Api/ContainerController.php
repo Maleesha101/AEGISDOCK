@@ -9,7 +9,6 @@ use App\Services\AuditLogger;
 use App\Services\FlagService;
 use App\Services\SecureCryptoService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class ContainerController extends Controller
