@@ -23,4 +23,4 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
       - name: Run PHPUnit tests
         working-directory: api
-        run: vendor/bin/phpunit -c phpunit.xml
+        run: vendor/bin/pest -c phpunit.xml
