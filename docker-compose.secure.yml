@@ -9,6 +9,8 @@ services:
     environment:
       - AEGISDOCK_MODE=secure
       - CRYPTO_SECURE_KEY_FILE=/run/secrets/crypto_secure_key
+    # Drop the vulnerable profile's runtime key/IV mount entirely.
+    volumes: !reset []
     secrets:
       - crypto_secure_key
 
