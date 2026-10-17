@@ -49,7 +49,7 @@ class SecureCryptoService
             'action' => $action,
             'issued_at' => time(),
             'expires_at' => time() + 3600, // 1 hour expiry
-        ], JSON_PRESERVE_ZERO_ORDER);
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
         // Encrypt with authentication
         $ciphertext = sodium_crypto_aead_aes256gcm_encrypt(
