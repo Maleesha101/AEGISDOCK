@@ -55,21 +55,30 @@ jobs:
       - name: Verify vulnerable image retains only historical layer secret
         run: |
           KEY_HEX="$(sed -n 's/^TERMINAL_CRYPTO_KEY_HEX=//p' secrets/terminal-gateway.env)"
+          FLAG_03="$(sed -n 's/^FLAG_03=//p' secrets/flags.env)"
+          FLAG_04="$(sed -n 's/^FLAG_04=//p' secrets/flags.env)"
           test -n "$KEY_HEX"
           docker save aegisdock/api:vulnerable -o /tmp/aegisdock-vulnerable.tar
           grep -aF "$KEY_HEX" /tmp/aegisdock-vulnerable.tar
+          grep -aF "$FLAG_03" /tmp/aegisdock-vulnerable.tar
+          grep -aF "$FLAG_04" /tmp/aegisdock-vulnerable.tar
           docker run --rm --entrypoint sh aegisdock/api:vulnerable -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
       - name: Build secure image
         run: docker compose -f docker-compose.yml -f docker-compose.secure.yml build --no-cache api
-      - name: Verify secure image excludes training keys
+      - name: Verify secure image excludes training secrets
         run: |
           KEY_HEX="$(sed -n 's/^TERMINAL_CRYPTO_KEY_HEX=//p' secrets/terminal-gateway.env)"
           IV_HEX="$(sed -n 's/^TERMINAL_CRYPTO_IV_HEX=//p' secrets/terminal-gateway.env)"
+          FLAG_03="$(sed -n 's/^FLAG_03=//p' secrets/flags.env)"
+          FLAG_04="$(sed -n 's/^FLAG_04=//p' secrets/flags.env)"
           SECURE_KEY="$(tr -d '\n' < secrets/secure_crypto_key)"
           docker save aegisdock/api:secure -o /tmp/aegisdock-secure.tar
           if grep -aF "$KEY_HEX" /tmp/aegisdock-secure.tar; then echo "Vulnerable key found in secure image"; exit 1; fi
           if grep -aF "$IV_HEX" /tmp/aegisdock-secure.tar; then echo "Vulnerable IV found in secure image"; exit 1; fi
           if grep -aF "$SECURE_KEY" /tmp/aegisdock-secure.tar; then echo "Secure key found in image"; exit 1; fi
+          if grep -aF "$FLAG_03" /tmp/aegisdock-secure.tar; then echo "Historical layer flag found in secure image"; exit 1; fi
+          if grep -aF "$FLAG_04" /tmp/aegisdock-secure.tar; then echo "Historical secret flag found in secure image"; exit 1; fi
+          docker run --rm --entrypoint sh aegisdock/api:secure -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
       - name: Clean up generated secret fixtures
         if: always()
         run: |
