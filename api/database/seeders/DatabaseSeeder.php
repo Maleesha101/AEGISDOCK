@@ -2,110 +2,100 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\User;
-use App\Models\Terminal;
 use App\Models\Container;
+use App\Models\Role;
+use App\Models\Terminal;
+use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
-    public function run()
+    public function run(): void
     {
-        // Roles should already be created in migrations
-        $operatorRole = \App\Models\Role::where('name', 'operator')->first();
-        $supervisorRole = \App\Models\Role::where('name', 'supervisor')->first();
-        $securityRole = \App\Models\Role::where('name', 'security_admin')->first();
+        $roles = [
+            'operator' => Role::where('name', 'operator')->first(),
+            'supervisor' => Role::where('name', 'supervisor')->first(),
+            'security_admin' => Role::where('name', 'security_admin')->first(),
+        ];
 
-        // Create users
+        foreach ($roles as $name => $role) {
+            if (!$role) {
+                throw new RuntimeException("Required role [{$name}] is missing. Run the role migration first.");
+            }
+        }
+
         $users = [
             [
                 'name' => 'Terminal Operator',
                 'email' => 'operator@aegisdock.local',
-                'password' => bcrypt('Operator123!'),
-                'role' => $operatorRole,
+                'password' => 'Operator123!',
+                'role' => $roles['operator'],
             ],
             [
                 'name' => 'Operations Supervisor',
                 'email' => 'supervisor@aegisdock.local',
-                'password' => bcrypt('Supervisor123!'),
-                'role' => $supervisorRole,
+                'password' => 'Supervisor123!',
+                'role' => $roles['supervisor'],
             ],
             [
                 'name' => 'Security Administrator',
                 'email' => 'security@aegisdock.local',
-                'password' => bcrypt('Security123!'),
-                'role' => $securityRole,
+                'password' => 'Security123!',
+                'role' => $roles['security_admin'],
             ],
         ];
 
         foreach ($users as $userData) {
-            $user = User::create([
-                'name' => $userData['name'],
-                'email' => $userData['email'],
-                'password' => $userData['password'],
-            ]);
-
-            $user->assignRole($userData['role']);
+            $user = User::updateOrCreate(
+                ['email' => $userData['email']],
+                [
+                    'name' => $userData['name'],
+                    'password' => Hash::make($userData['password']),
+                ]
+            );
+            $user->syncRoles([$userData['role']]);
         }
 
-        // Create terminals
         $terminals = [
-            [
-                'code' => 'T-01',
-                'name' => 'North Harbor Terminal',
-                'location' => 'Berth 1-5',
-                'status' => 'OPERATIONAL',
-            ],
-            [
-                'code' => 'T-04',
-                'name' => 'Central Docking Facility',
-                'location' => 'Berth 6-10',
-                'status' => 'OPERATIONAL',
-            ],
-            [
-                'code' => 'T-07',
-                'name' => 'South Container Terminal',
-                'location' => 'Berth 11-15',
-                'status' => 'OPERATIONAL',
-            ],
-            [
-                'code' => 'T-12',
-                'name' => 'East Terminal Extension',
-                'location' => 'Berth 16-20',
-                'status' => 'MAINTENANCE',
-            ],
+            ['code' => 'T-01', 'name' => 'North Harbor Terminal', 'location' => 'Berth 1-5', 'status' => 'OPERATIONAL'],
+            ['code' => 'T-04', 'name' => 'Central Docking Facility', 'location' => 'Berth 6-10', 'status' => 'OPERATIONAL'],
+            ['code' => 'T-07', 'name' => 'South Container Terminal', 'location' => 'Berth 11-15', 'status' => 'OPERATIONAL'],
+            ['code' => 'T-12', 'name' => 'East Terminal Extension', 'location' => 'Berth 16-20', 'status' => 'MAINTENANCE'],
         ];
 
         foreach ($terminals as $terminalData) {
-            Terminal::create($terminalData);
+            Terminal::updateOrCreate(['code' => $terminalData['code']], $terminalData);
         }
 
-        // Create containers - focusing on the key scenario T-07/CONT-88421
+        $terminalIds = Terminal::query()->pluck('id', 'code');
+
         $containers = [
             [
                 'container_number' => 'CONT-88421',
-                'terminal_id' => Terminal::where('code', 'T-07')->first()->id,
+                'terminal_id' => $terminalIds['T-07'],
                 'owner' => 'Global Shipping Lines',
                 'cargo_type' => 'Electronics',
                 'status' => 'READY',
             ],
             [
                 'container_number' => 'CONT-91273',
-                'terminal_id' => Terminal::where('code', 'T-07')->first()->id,
+                'terminal_id' => $terminalIds['T-07'],
                 'owner' => 'Pacific Freight Corp',
                 'cargo_type' => 'Automotive Parts',
                 'status' => 'READY',
             ],
             [
                 'container_number' => 'CONT-77102',
-                'terminal_id' => Terminal::where('code', 'T-04')->first()->id,
+                'terminal_id' => $terminalIds['T-04'],
                 'owner' => 'Atlantic Trade Co',
                 'cargo_type' => 'Textiles',
                 'status' => 'HELD',
             ],
             [
                 'container_number' => 'CONT-44192',
-                'terminal_id' => Terminal::where('code', 'T-01')->first()->id,
+                'terminal_id' => $terminalIds['T-01'],
                 'owner' => 'Mediterranean Shipping',
                 'cargo_type' => 'Machinery',
                 'status' => 'RELEASED',
@@ -113,7 +103,10 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($containers as $containerData) {
-            Container::create($containerData);
+            Container::updateOrCreate(
+                ['container_number' => $containerData['container_number']],
+                $containerData
+            );
         }
     }
 }
