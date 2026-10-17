@@ -57,7 +57,6 @@ class ContainerController extends Controller
             'success' => true,
             'message' => 'Container inspected successfully',
             'data' => $container->load('terminal'),
-            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-08') : null,
         ]);
     }
 
@@ -127,7 +126,6 @@ class ContainerController extends Controller
             'user_agent' => $request->userAgent(),
             'action' => 'RELEASE',
             'mode' => $secureMode ? 'secure' : 'vulnerable',
-            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-09') : null,
         ]);
 
         if ($secureMode) {
@@ -257,6 +255,7 @@ class ContainerController extends Controller
             'result' => 'success',
             'status' => 'RELEASED',
             'mode' => $secureMode ? 'secure' : 'vulnerable',
+            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-09') : null,
         ]);
 
         Log::channel('audit')->info('CONTAINER_RELEASE', [
@@ -272,6 +271,7 @@ class ContainerController extends Controller
             'success' => true,
             'message' => 'Container released successfully',
             'data' => $container->load('terminal'),
+            'flag' => (!$secureMode && $authArtifact) ? app(FlagService::class)->valueFor('FLAG-08') : null,
         ]);
     }
 
