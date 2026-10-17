@@ -59,7 +59,7 @@ class CryptoService
             'action' => $action,
             'issued_at' => time(),
             'expires_at' => time() + 3600, // 1 hour expiry
-        ], JSON_PRESERVE_ZERO_ORDER);
+        ], JSON_PRESERVE_ZERO_FRACTION);
 
         $ciphertext = openssl_encrypt(
             $plaintext,
