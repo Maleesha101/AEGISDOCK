@@ -47,6 +47,7 @@ const TerminalsPage: NextPage = () => {
               <div className="flex items-center">
                 <Link href="/" className="flex-shrink-0">
                   <img className="h-8 w-8" src="https://via.placeholder.com/40" alt="AegisDock" />
+                </Link>
                 </div>
                 <div className="hidden md:block">
                   <div className="ml-10 flex items-baseline space-x-4">
@@ -121,7 +122,7 @@ const TerminalsPage: NextPage = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-3">
-                        <span className={`px-3 py-1 text-xs font-medium rounded-full {
+                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${
                           terminal.status === 'OPERATIONAL' ? 'bg-green-100 text-green-800' :
                           terminal.status === 'MAINTENANCE' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
