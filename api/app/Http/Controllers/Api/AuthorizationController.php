@@ -6,16 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\AuthorizationArtifact;
 use App\Models\Container;
 use App\Models\Terminal;
-use App\Services\CryptoService;
 use App\Services\SecureCryptoService;
 use Illuminate\Http\Request;
 
 class AuthorizationController extends Controller
 {
-    public function __construct(private readonly CryptoService $crypto)
-    {
-    }
-
     /**
      * Issue a view artifact for a container at a specified terminal.
      */
@@ -45,7 +40,7 @@ class AuthorizationController extends Controller
                 'VIEW'
             );
         } else {
-            $ciphertext = $this->crypto->generateArtifact(
+            $ciphertext = app(\App\Services\CryptoService::class)->generateArtifact(
                 $userId,
                 (int) $terminal->id,
                 (int) $container->id,
@@ -117,13 +112,13 @@ class AuthorizationController extends Controller
             $metadata = null;
 
             try {
-                $metadata = $this->crypto->decryptArtifact($artifact->ciphertext);
+                $metadata = app(\App\Services\CryptoService::class)->decryptArtifact($artifact->ciphertext);
             } catch (\Throwable) {
                 // Keep the endpoint useful for malformed artifacts too.
             }
 
             $data = [
-                'algorithm' => $this->crypto->getAlgorithm(),
+                'algorithm' => app(\App\Services\CryptoService::class)->getAlgorithm(),
                 'iv' => bin2hex($iv),
                 'iv_length' => strlen($iv),
                 'ciphertext_length' => max(0, strlen($decoded) - 16),
