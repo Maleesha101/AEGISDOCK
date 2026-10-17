@@ -17,7 +17,13 @@ class SecureCryptoService
     public function __construct()
     {
         // SECURE: Key is injected at runtime, never stored in image
-        $this->key = base64_decode(config('crypto.secure_key'));
+        $encodedKey = config('crypto.secure_key');
+        $secretFile = config('crypto.secure_key_file', '/run/secrets/crypto_secure_key');
+        if ((!is_string($encodedKey) || $encodedKey === '') && is_readable($secretFile)) {
+            $encodedKey = trim((string) file_get_contents($secretFile));
+        }
+
+        $this->key = is_string($encodedKey) ? (base64_decode($encodedKey, true) ?: '') : '';
         if (!$this->key || strlen($this->key) !== $this->keyLength) {
             throw new Exception('Invalid or missing encryption key');
         }
