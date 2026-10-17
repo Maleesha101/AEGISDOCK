@@ -3,17 +3,15 @@
 use App\Models\User;
 use App\Models\Terminal;
 use App\Models\Container;
+use Database\Seeders\DatabaseSeeder;
 use App\Services\SecureCryptoService;
 use Laravel\Sanctum\Sanctum;
 
 uses(Tests\TestCase::class);
 
 beforeEach(function () {
-    Sanctum::ignoreMigratedTables();
-
-    // Clear and reseed test database
-    $this->artisan('migrate:fresh');
-    $this->artisan('db:seed');
+    // RefreshDatabase in the shared test case manages migrations/transactions.
+    $this->seed(DatabaseSeeder::class);
 
     // Set up secure crypto for testing
     config()->set('crypto.secure_key', base64_encode(random_bytes(32)));
@@ -138,7 +136,7 @@ test('secure crypto validates artifact expiration', function () {
         'action' => 'VIEW',
         'issued_at' => time() - 7200,  // 2 hours ago
         'expires_at' => time() - 3600, // 1 hour ago (expired)
-    ], JSON_PRESERVE_ZERO_ORDER);
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
     $nonce = random_bytes(12);
     $key = base64_decode(config('crypto.secure_key'));
