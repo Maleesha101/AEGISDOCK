@@ -12,7 +12,7 @@ abstract class TestCase extends BaseTestCase
     public function createApplication()
     {
         $app = require __DIR__.'/../api/bootstrap/app.php';
-        $app->make(\\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+        $app->make(\Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
 
         return $app;
     }
