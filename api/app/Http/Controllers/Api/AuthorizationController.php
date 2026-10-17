@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuthorizationArtifact;
 use App\Models\Container;
 use App\Models\Terminal;
+use App\Services\AuditLogger;
 use App\Services\SecureCryptoService;
 use Illuminate\Http\Request;
 
@@ -56,6 +57,13 @@ class AuthorizationController extends Controller
             'expires_at' => now()->addHour(),
         ]);
 
+        app(AuditLogger::class)->record($request, 'AUTHORIZATION_ARTIFACT_CREATED', 'authorization_artifact', $artifact->id, [
+            'terminal' => $terminal->code,
+            'container' => $container->container_number,
+            'action' => 'VIEW',
+            'mode' => $secureMode ? 'secure' : 'vulnerable',
+        ]);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -78,6 +86,7 @@ class AuthorizationController extends Controller
     public function debug(Request $request, $id)
     {
         $artifact = AuthorizationArtifact::findOrFail($id);
+        app(AuditLogger::class)->record($request, 'AUTHORIZATION_METADATA_VIEWED', 'authorization_artifact', $artifact->id, []);
         $secureMode = config('crypto.mode', 'vulnerable') === 'secure';
         $decoded = base64_decode($artifact->ciphertext, true);
 
