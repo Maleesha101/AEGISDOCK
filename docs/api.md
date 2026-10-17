@@ -154,6 +154,29 @@ Authenticated training debug endpoint - get cryptographic metadata. It never ret
 }
 ```
 
+## CTF flags
+
+### GET /api/flags
+
+List stage descriptions, points, and completion status for the authenticated user. Expected flag values are never included in this response.
+
+### POST /api/flags/submit
+
+Submit a discovered flag.
+
+```json
+{
+  "code": "FLAG-01",
+  "flag": "AEGIS{discovered-value}"
+}
+```
+
+The service compares the submitted value to a randomly generated local flag, then records the completion per user. Flag values are loaded from an ignored runtime-only secret file.
+
+### GET /api/security/verification
+
+Available to authenticated users in secure mode. Confirms that the secure runtime key is available and the removed legacy archive is absent from the final filesystem, then returns the remediation-stage flag.
+
 ## Audit
 
 ### GET /api/audit
