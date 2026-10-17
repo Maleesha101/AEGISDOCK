@@ -65,6 +65,11 @@ class ContainerController extends Controller
         $user = $request->user();
         $role = $user->roles->first()?->name;
 
+        if ($container->status === 'RELEASED') {
+            $this->recordAudit($request, 'CONTAINER_HOLD_FAILURE', $container, ['reason' => 'already_released']);
+            return response()->json(['success' => false, 'message' => 'A released container cannot be placed on hold'], 409);
+        }
+
         if (!in_array($role, ['supervisor', 'security_admin'], true)) {
             $this->recordAudit($request, 'AUTHORIZATION_FAILURE', $container, [
                 'requested_action' => 'HOLD',
