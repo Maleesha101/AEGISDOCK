@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Browser traffic enters through the local Nginx gateway only.
   frontend:
