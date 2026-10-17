@@ -45,3 +45,5 @@ deploy/archive/*
 
 # Cache
 bootstrap/cache/*.php
+deploy/archive/terminal-gateway.env.bak
+registry-simulator/artifacts/*.tar
