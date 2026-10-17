@@ -23,6 +23,7 @@ export function clearToken(): void {
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body && !headers.has("Content-Type")) {
