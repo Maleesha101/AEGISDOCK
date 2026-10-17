@@ -10,6 +10,17 @@ app.use(express.json({ limit: '32kb' }));
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || '/artifacts';
 const IMAGE_ARTIFACTS = { 'aegisdock-terminal-api': 'aegisdock-terminal-api.tar' };
 
+function flagValue(code) {
+    const file = process.env.AEGISDOCK_FLAGS_FILE || '/run/secrets/lab_flags';
+    try {
+        const prefix = `${code.replace('-', '_')}=`;
+        const line = fs.readFileSync(file, 'utf8').split(/\\r?\\n/).find((entry) => entry.startsWith(prefix));
+        return line ? line.slice(prefix.length).trim() : null;
+    } catch {
+        return null;
+    }
+}
+
 app.get('/health', (_req, res) => res.json({ success: true, service: 'registry-simulator' }));
 
 // Simulated internal image registry
