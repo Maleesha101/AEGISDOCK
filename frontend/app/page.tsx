@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, clearToken, getToken } from "../lib/api";
 
@@ -24,6 +24,7 @@ type AuditRecord = {
   metadata?: Record<string, unknown>;
 };
 type PaginatedAudit = { data?: AuditRecord[] };
+type FlagRecord = { code: string; description: string; points: number; submitted: boolean };
 type ApiResponse<T> = { success: boolean; user?: User; data?: T; message?: string };
 
 const statusClass = (status: string) => {
@@ -39,6 +40,9 @@ export default function DashboardPage() {
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [containers, setContainers] = useState<ContainerRecord[]>([]);
   const [audit, setAudit] = useState<AuditRecord[]>([]);
+  const [flags, setFlags] = useState<FlagRecord[]>([]);
+  const [flagCode, setFlagCode] = useState('FLAG-01');
+  const [flagInput, setFlagInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -53,17 +57,19 @@ export default function DashboardPage() {
   const loadDashboard = useCallback(async () => {
     setError("");
     try {
-      const [me, terminalResponse, containerResponse, auditResponse] = await Promise.all([
+      const [me, terminalResponse, containerResponse, auditResponse, flagResponse] = await Promise.all([
         apiRequest<ApiResponse<never>>("/me"),
         apiRequest<ApiResponse<Terminal[]>>("/terminals"),
         apiRequest<ApiResponse<ContainerRecord[]>>("/containers"),
         apiRequest<ApiResponse<PaginatedAudit>>("/audit?limit=6"),
+        apiRequest<ApiResponse<FlagRecord[]>>("/flags"),
       ]);
       if (!me.user) throw new Error("Unable to load authenticated operator.");
       setUser(me.user);
       setTerminals(terminalResponse.data || []);
       setContainers(containerResponse.data || []);
       setAudit(auditResponse.data?.data || []);
+      setFlags(flagResponse.data || []);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not load the operations dashboard.";
       if (!getToken()) {
@@ -118,6 +124,23 @@ export default function DashboardPage() {
     }
   }
 
+  async function submitFlag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    try {
+      const result = await apiRequest<ApiResponse<{ code: string; points: number }>>('/flags/submit', {
+        method: 'POST',
+        body: JSON.stringify({ code: flagCode, flag: flagInput }),
+      });
+      setFlagInput('');
+      setNotice(result.message || `Accepted ${flagCode} (+${result.data?.points || 0} points).`);
+      await loadDashboard();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Flag submission failed.');
+    }
+  }
+
   function signOut() {
     clearToken();
     router.replace("/login");
@@ -140,6 +163,7 @@ export default function DashboardPage() {
           <a className="nav-item" href="#terminals"><span className="nav-icon">⌁</span>Terminals</a>
           <a className="nav-item" href="#containers"><span className="nav-icon">▤</span>Containers</a>
           <a className="nav-item" href="#audit"><span className="nav-icon">◷</span>Audit trail</a>
+          <a className="nav-item" href="#flags"><span className="nav-icon">⚑</span>CTF progress</a>
           <a className="nav-item" href="#security"><span className="nav-icon">◇</span>Security center</a>
         </nav>
         <div className="sidebar-bottom">
@@ -171,6 +195,23 @@ export default function DashboardPage() {
           <article className="metric-card"><div className="metric-top"><span>TRACKED CONTAINERS</span><span className="metric-icon">▤</span></div><strong>{containers.length.toString().padStart(2, "0")}</strong><small>Across all terminals</small></article>
           <article className="metric-card"><div className="metric-top"><span>READY TO MOVE</span><span className="metric-icon">↗</span></div><strong>{readyCount.toString().padStart(2, "0")}</strong><small>Awaiting authorized action</small></article>
           <article className="metric-card"><div className="metric-top"><span>ACTIVE HOLDS</span><span className="metric-icon">Ⅱ</span></div><strong>{heldCount.toString().padStart(2, "0")}</strong><small>Requires operator attention</small></article>
+        </section>
+
+        <section className="content-panel" id="flags">
+          <div className="section-heading"><div><p className="eyebrow">INVESTIGATION TRACKER</p><h2>CTF progress</h2></div><span className="section-count">{flags.filter((flag) => flag.submitted).length} / {flags.length} flags</span></div>
+          <form className="flag-submit-form" onSubmit={submitFlag}>
+            <label htmlFor="flag-code">Stage</label>
+            <select id="flag-code" value={flagCode} onChange={(event) => setFlagCode(event.target.value)}>
+              {flags.map((flag) => <option key={flag.code} value={flag.code}>{flag.code} · {flag.description}</option>)}
+            </select>
+            <label htmlFor="flag-value">Flag value</label>
+            <input id="flag-value" value={flagInput} onChange={(event) => setFlagInput(event.target.value)} placeholder="AEGIS{...}" autoComplete="off" required />
+            <button className="action-button action-submit-flag" type="submit">Submit flag</button>
+          </form>
+          <div className="flag-grid">{flags.map((flag) => <article className={`flag-card ${flag.submitted ? 'flag-complete' : ''}`} key={flag.code}>
+            <div><strong>{flag.code}</strong><span>{flag.submitted ? 'COMPLETED' : `${flag.points} PTS`}</span></div>
+            <p>{flag.description}</p>
+          </article>)}</div>
         </section>
 
         <section className="content-panel" id="terminals">
