@@ -7,6 +7,7 @@ use App\Models\AuthorizationArtifact;
 use App\Models\Container;
 use App\Models\Terminal;
 use App\Services\AuditLogger;
+use App\Services\FlagService;
 use App\Services\SecureCryptoService;
 use Illuminate\Http\Request;
 
@@ -74,6 +75,7 @@ class AuthorizationController extends Controller
                 'action' => 'VIEW',
                 'issued_at' => now()->timestamp,
                 'expires_at' => $artifact->expires_at->timestamp,
+                'flag' => app(FlagService::class)->valueFor('FLAG-06'),
             ],
             'note' => 'Authorization artifact issued for the selected container.',
         ]);
@@ -146,6 +148,8 @@ class AuthorizationController extends Controller
                 'expires_at' => $metadata['expires_at'] ?? null,
             ];
         }
+
+        $data['flag'] = app(FlagService::class)->valueFor('FLAG-05');
 
         return response()->json(['success' => true, 'data' => $data]);
     }
