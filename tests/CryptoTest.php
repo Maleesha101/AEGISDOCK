@@ -7,8 +7,8 @@ uses(Tests\TestCase::class);
 
 beforeEach(function () {
     // Set up config for vulnerable crypto
-    config()->set('crypto.key', 'TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12');
-    config()->set('crypto.iv', 'TRAINING-FAKE-IV-1234567890ABC');
+    config()->set('crypto.key', 'TRAINING-KEY-32-BYTES-ONLY-00000');
+    config()->set('crypto.iv', 'TRAINING-IV-1234');
     config()->set('crypto.secure_key', base64_encode(random_bytes(32)));
 });
 
@@ -40,7 +40,7 @@ test('vulnerable crypto uses static IV', function () {
     $artifact2 = $crypto->generateArtifact(1001, 7, 1, 'VIEW');
 
     // The implementation reuses the same IV for each encryption.
-    expect($crypto->getIv())->toBe('TRAINING-FAKE-IV-1234567890ABC');
+    expect($crypto->getIv())->toBe('TRAINING-IV-1234');
     expect($crypto->getIv())->toBe($crypto->getIv());
     expect($artifact1)->toBeString();
     expect($artifact2)->toBeString();
@@ -101,7 +101,7 @@ test('secure crypto rejects tampered ciphertext', function () {
     // Tamper with the ciphertext
     $decoded = base64_decode($artifact);
     $tampered = $decoded;
-    $tampered[strlen($tampered) - 1] ^= 0xFF; // Flip last bit
+    $tampered = substr($decoded, 0, -1) . chr(ord(substr($decoded, -1)) ^ 0xFF); // Flip last bit
     $tamperedArtifact = base64_encode($tampered);
 
     // Should throw exception on tampered ciphertext
