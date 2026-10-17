@@ -169,6 +169,23 @@ class ContainerController extends Controller
                 // the server will trust the decrypted action field
                 $authorizedAction = $artifactData['action'] ?? 'UNKNOWN';
 
+                // The vulnerable design still requires a RELEASE claim. CBC
+                // malleability is the intended way to demonstrate how that claim
+                // can be altered; an ordinary VIEW artifact must not release cargo.
+                if ($authorizedAction !== 'RELEASE') {
+                    Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
+                        'user_id' => $user->id,
+                        'action' => $authorizedAction,
+                        'container' => $containerNumber,
+                        'ip' => $request->ip(),
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Authorization artifact does not permit release',
+                    ], 403);
+                }
+
                 // Log authorization success based on artifact
                 Log::channel('audit')->info('AUTHORIZATION_SUCCESS', [
                     'user_id' => $user->id,
