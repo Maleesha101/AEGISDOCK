@@ -2,45 +2,29 @@
 
 namespace Tests;
 
-use Tests\TestCase;
 use App\Services\CryptoService;
 use App\Services\SecureCryptoService;
+use Tests\TestCase;
 
-/**
- * Test cryptographic implementations in AegisDock.
- * 
- * Validates both vulnerable and secure crypto patterns
- * documented in the laboratory's threat model.
- */
-class CryptoTest extends TestCase
+class CryptoVulnTest extends TestCase
 {
-    /** @test */
-    public function test_vulnerable_aes_cbc_lacks_integrity()
+    public function test_vulnerable_artifact_uses_cbc_without_integrity(): void
     {
         $service = new CryptoService();
+        $artifact = $service->generateArtifact(1001, 7, 1, 'VIEW');
 
-        // Encrypt test data
-        $plaintext = 'Sensitive container release authorization';
-        $ciphertext = $service->encrypt($plaintext);
-
-        // Decrypt should succeed
-        $decrypted = $service->decrypt($ciphertext);
-        $this->assertEquals($plaintext, $decrypted);
-
-        // Key derivation should NOT use PBKDF2 or Argon2
-        $this->assertFalse($service->usesStrongKdf());
+        $this->assertSame('aes-256-cbc', $service->getAlgorithm());
+        $this->assertSame('VIEW', $service->decryptArtifact($artifact)['action']);
     }
 
-    /** @test */
-    public function test_secure_aes_gcm_provides_integrity()
+    public function test_secure_artifact_uses_authenticated_encryption(): void
     {
+        config()->set('crypto.secure_key', base64_encode(random_bytes(32)));
+
         $service = new SecureCryptoService();
+        $artifact = $service->generateArtifact(1001, 7, 1, 'VIEW');
 
-        $plaintext = 'Secure container metadata';
-        $ciphertext = $service->encrypt($plaintext);
-        $decrypted = $service->decrypt($ciphertext);
-
-        $this->assertEquals($plaintext, $decrypted);
-        $this->assertTrue($service->usesAesGcm());
+        $this->assertSame('AES-256-GCM', $service->getAlgorithm());
+        $this->assertSame('VIEW', $service->decryptArtifact($artifact)['action']);
     }
 }
