@@ -6,6 +6,7 @@ FROM php:8.3-apache
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     libpng-dev \
+    libpq-dev \
     libonig-dev \
     libxml2-dev \
     zip \
@@ -24,10 +25,11 @@ WORKDIR /var/www/html
 
 # Install Laravel dependencies
 COPY api/composer.json ./
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 # Copy application source - NO deployment secrets ever copied
 COPY api/ ./
+RUN composer dump-autoload --no-dev --optimize-autoloader
 
 # SECURE: Create directories for runtime secrets (mounted at runtime)
 RUN mkdir -p /run/secrets/credentials
