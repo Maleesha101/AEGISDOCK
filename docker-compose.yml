@@ -32,8 +32,9 @@ services:
       - DB_DATABASE=${POSTGRES_DB:-aegisdock}
       - DB_USERNAME=${POSTGRES_USER:-aegisdock}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-aegisdock_local_only}
-      - CRYPTO_KEY=${CRYPTO_KEY:-AEGISDOCK-TRAINING-KEY-32-BYTES!}
-      - CRYPTO_IV=${CRYPTO_IV:-AEGIS-STATIC-IV!}
+      - CRYPTO_KEY_FILE=/run/secrets/terminal-gateway.env
+    volumes:
+      - ./secrets/terminal-gateway.env:/run/secrets/terminal-gateway.env:ro
     depends_on:
       postgres:
         condition: service_healthy
