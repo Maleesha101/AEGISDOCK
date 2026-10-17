@@ -45,7 +45,7 @@ RUN rm /opt/legacy/terminal-gateway.env.bak
 # history, teaching learners to never store secrets in Docker images.
 
 # SECURITY BEST PRACTICE: Multi-stage builds prevent secret leakage.
-# In production, use .dockerignore, build-time secrets (ARG/ENV), or
+# In production, use .dockerignore, BuildKit secret mounts, or
 # external secret management (Vault, KMS) instead of hardcoding in Dockerfiles.
 # EXPOSE port
 EXPOSE 80
