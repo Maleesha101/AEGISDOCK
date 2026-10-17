@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\TerminalController;
 use App\Http\Controllers\Api\ContainerController;
+use App\Http\Controllers\Api\SecureContainerController;
 use App\Http\Controllers\Api\AuthorizationController;
 use App\Http\Controllers\Api\AuditController;
 
@@ -22,6 +23,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/containers/{container}/inspect', [ContainerController::class, 'inspect']);
     Route::post('/containers/{container}/hold', [ContainerController::class, 'hold']);
     Route::post('/containers/{container}/release', [ContainerController::class, 'release']);
+    Route::post('/secure/containers/{container}/release', [SecureContainerController::class, 'release']);
 
     Route::get('/authorization/artifact', [AuthorizationController::class, 'getArtifact']);
     Route::get('/debug/authorization/{id}', [AuthorizationController::class, 'debug']);
