@@ -7,7 +7,6 @@ use App\Models\Container;
 use App\Models\ContainerEvent;
 use App\Models\AuthorizationArtifact;
 use App\Models\Terminal;
-use App\Services\CryptoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -206,7 +205,7 @@ class ContainerController extends Controller
             // The vulnerable mode trusts the decrypted action and skips the
             // server-side role check whenever an artifact is supplied.
             try {
-                $artifactData = $this->crypto->decryptArtifact($authArtifact);
+                $artifactData = app(\App\Services\CryptoService::class)->decryptArtifact($authArtifact);
                 $authorizedAction = $artifactData['action'] ?? 'UNKNOWN';
 
                 if ($authorizedAction !== 'RELEASE') {
