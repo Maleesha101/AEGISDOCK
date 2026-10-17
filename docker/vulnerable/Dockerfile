@@ -14,10 +14,12 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     && docker-php-ext-install pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd xml \
+    && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
 
 # VULNERABILITY: DOCKER-01
 # Layer N: Copy deployment archive with crypto keys to old path
