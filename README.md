@@ -1120,6 +1120,25 @@ Or:
 docker compose up --build
 ```
 
+### Runtime secrets and image retrieval
+
+The first vulnerable build initializes fake local-only runtime secrets in the ignored `secrets/` directory. The vulnerable Dockerfile intentionally copies a generated fixture into an earlier image layer and removes it in a later layer. The generated archive fixture is deleted from the working tree after the image is built; do not commit files from `secrets/` or `deploy/archive/`.
+
+To download the locally built vulnerable image through the registry simulator:
+
+```bash
+curl -fL http://localhost:8080/registry/images/aegisdock-terminal-api/download \
+  -o aegisdock-terminal-api.tar
+docker load -i aegisdock-terminal-api.tar
+docker history --no-trunc aegisdock/api:vulnerable
+```
+
+The secure profile uses a separate runtime-mounted AEAD key and a Dockerfile that excludes the deployment archive:
+
+```bash
+make secure-up
+```
+
 ### Seed Data
 
 ```bash
