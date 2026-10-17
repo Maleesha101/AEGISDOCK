@@ -1,42 +1,40 @@
-.PHONY: up down reset logs seed test scan clean help build-vulnerable build-secure
+.PHONY: up down reset logs seed build-vulnerable build-secure test scan clean
 
-# AegisDock Makefile
-
-help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-
-up: ## Start all services
+up: build-vulnerable
+	docker compose build frontend registry-simulator audit-service
 	docker compose up -d
+	@echo "AegisDock dashboard: http://localhost:$${AEGISDOCK_HTTP_PORT:-8080}"
 
-down: ## Stop all services
+down:
 	docker compose down
 
-reset: down up ## Reset all services
+reset:
+	docker compose down -v --remove-orphans
 
-logs: ## Show logs
-	docker compose logs -f
+logs:
+	docker compose logs -f --tail=150
 
-seed: ## Run database migrations and seeders
-	docker compose exec api php artisan migrate --force
-	docker compose exec api php artisan db:seed --force
+seed:
+	docker compose exec -T api php artisan migrate --force
+	docker compose exec -T api php artisan db:seed --force
 
-build-vulnerable: ## Build the vulnerable Docker image
-	docker build -t aegisdock/api:vulnerable -f docker/vulnerable/Dockerfile .
+build-vulnerable:
+	docker compose build --no-cache api
+	mkdir -p registry-simulator/artifacts
+	docker save aegisdock/api:vulnerable -o registry-simulator/artifacts/aegisdock-terminal-api.tar
 
-build-secure: ## Build the secure Docker image
-	docker build -t aegisdock/api:secure -f docker/secure/Dockerfile .
+build-secure:
+	@echo "Secure Docker build is added in the secure-remediation phase."
 
-test: ## Run tests
-	cd api && ./vendor/bin/pest
+test:
+	cd api && composer install --no-interaction --prefer-dist
+	cd api && ./vendor/bin/pest -c phpunit.xml
 
-scan: ## Scan vulnerable image for secrets
-	docker history aegisdock/api:vulnerable --no-trunc
+scan:
+	@command -v trivy >/dev/null 2>&1 || { echo "Install Trivy to run image scans."; exit 1; }
+	trivy image aegisdock/api:vulnerable
+	trivy image aegisdock-frontend
 
-lint: ## Run code linting and static analysis
-	cd api && ./vendor/bin/pest --filter=skip
-	@composer --working-dir=api lint 2>/dev/null || echo "No dedicated lint script"
-
-clean: ## Stop and remove all containers/volumes
-	docker compose down -v
-	docker rmi aegisdock/api:vulnerable 2>/dev/null || true
-	docker rmi aegisdock/api:secure 2>/dev/null || true
+clean:
+	docker compose down --remove-orphans
+	rm -f registry-simulator/artifacts/aegisdock-terminal-api.tar
