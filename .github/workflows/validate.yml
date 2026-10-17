@@ -28,7 +28,7 @@ jobs:
         working-directory: api
         run: vendor/bin/phpunit -c phpunit.xml
       - name: PHP syntax checks
-        run: find api/app api/bootstrap api/config api/database api/routes -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find api/app api/bootstrap api/config api/database api/routes tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Check Node service syntax
         run: |
           node --check registry-simulator/index.js
