@@ -37,7 +37,7 @@ fi
 if [[ ! -s "${FLAGS_FILE}" ]] || ! grep -q '^FLAG_10=' "${FLAGS_FILE}"; then
   : > "${FLAGS_FILE}"
   for number in 01 02 03 04 05 06 07 08 09 10; do
-    printf 'FLAG_%s=AEGIS{%s}\\n' "${number}" "$(openssl rand -hex 16)" >> "${FLAGS_FILE}"
+    printf 'FLAG_%s=AEGIS{%s}\n' "${number}" "$(openssl rand -hex 16)" >> "${FLAGS_FILE}"
   done
   chmod 600 "${FLAGS_FILE}"
 fi
