@@ -99,7 +99,7 @@ test('secure crypto rejects tampered ciphertext', function () {
     $decoded = base64_decode($validArtifact);
     $tampered = $decoded;
     // Flip a bit in the ciphertext portion
-    $tampered[strlen($tampered) - 1] ^= 0x01;
+    $tampered = substr($decoded, 0, -1) . chr(ord(substr($decoded, -1)) ^ 0x01);
     $tamperedArtifact = base64_encode($tampered);
 
     // Attempt to decrypt should fail
