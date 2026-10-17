@@ -1112,6 +1112,8 @@ cd AEGISDOCK
 make up
 ```
 
+Open the local dashboard at **http://localhost:8080**. Nginx is the only host-published service by default; the API, PostgreSQL, registry simulator, and audit service remain on the internal Compose network.
+
 Or:
 
 ```bash
