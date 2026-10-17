@@ -57,6 +57,28 @@ class VulnerableReleaseTest extends TestCase
         ]);
     }
 
+    public function test_view_artifact_is_not_sufficient_for_release(): void
+    {
+        $token = $this->tokenFor('operator@aegisdock.local', 'Operator123!');
+
+        $artifactResponse = $this->withToken($token)
+            ->getJson('/api/authorization/artifact?terminal=T-07&container=CONT-88421');
+
+        $artifactResponse->assertOk()
+            ->assertJsonPath('data.action', 'VIEW')
+            ->assertJsonStructure(['data' => ['id', 'artifact']]);
+
+        $this->withToken($token)
+            ->withHeaders(['X-Terminal-Authorization' => $artifactResponse->json('data.artifact')])
+            ->postJson('/api/containers/CONT-88421/release', ['reason' => 'baseline test'])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('containers', [
+            'container_number' => 'CONT-88421',
+            'status' => 'READY',
+        ]);
+    }
+
     public function test_supervisor_can_release_simulated_container(): void
     {
         $token = $this->tokenFor('supervisor@aegisdock.local', 'Supervisor123!');
@@ -71,6 +93,14 @@ class VulnerableReleaseTest extends TestCase
         $this->assertDatabaseHas('containers', [
             'container_number' => 'CONT-88421',
             'status' => 'RELEASED',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'CONTAINER_RELEASE_ATTEMPT',
+            'resource_id' => 'CONT-88421',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'CONTAINER_RELEASE',
+            'resource_id' => 'CONT-88421',
         ]);
     }
 }
