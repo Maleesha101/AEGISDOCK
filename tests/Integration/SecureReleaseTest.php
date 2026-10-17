@@ -9,8 +9,6 @@ use Laravel\Sanctum\Sanctum;
 uses(Tests\TestCase::class);
 
 beforeEach(function () {
-    Sanctum::ignoreMigratedTables();
-
     // Clear and reseed test database
     $this->artisan('migrate:fresh');
     $this->artisan('db:seed');
@@ -39,7 +37,7 @@ test('operator cannot release container even with valid artifact in secure mode'
 
     // Attempt to release with the artifact
     $response = $this->postJson(
-        "/api/containers/{$container->container_number}/release",
+        "/api/secure/containers/{$container->container_number}/release",
         ['reason' => 'test release'],
         ['X-Terminal-Authorization' => $artifact]
     );
