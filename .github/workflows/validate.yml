@@ -16,8 +16,16 @@ jobs:
         with:
           php-version: '8.3'
           extensions: mbstring, pdo_pgsql, pdo_mysql, pdo_sqlite, xml, gd, bcmath
-      - name: Validate Compose configuration
-        run: docker compose config --quiet
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Initialize fake local-only build secrets
+        run: bash scripts/init-local-secrets.sh
+      - name: Validate Compose configurations
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.secure.yml config --quiet
       - name: Validate Composer manifest
         working-directory: api
         run: composer validate --no-check-publish
@@ -29,10 +37,6 @@ jobs:
         run: vendor/bin/pest -c phpunit.xml
       - name: PHP syntax checks
         run: find api/app api/bootstrap api/config api/database api/routes tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install --no-package-lock --no-audit --no-fund
@@ -46,3 +50,29 @@ jobs:
         run: |
           node --check registry-simulator/index.js
           node --check audit-service/index.js
+      - name: Build vulnerable image
+        run: docker compose build --no-cache api
+      - name: Verify vulnerable image retains only historical layer secret
+        run: |
+          KEY_HEX="$(sed -n 's/^TERMINAL_CRYPTO_KEY_HEX=//p' secrets/terminal-gateway.env)"
+          test -n "$KEY_HEX"
+          docker save aegisdock/api:vulnerable -o /tmp/aegisdock-vulnerable.tar
+          grep -aF "$KEY_HEX" /tmp/aegisdock-vulnerable.tar
+          docker run --rm --entrypoint sh aegisdock/api:vulnerable -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
+      - name: Build secure image
+        run: docker compose -f docker-compose.yml -f docker-compose.secure.yml build --no-cache api
+      - name: Verify secure image excludes training keys
+        run: |
+          KEY_HEX="$(sed -n 's/^TERMINAL_CRYPTO_KEY_HEX=//p' secrets/terminal-gateway.env)"
+          IV_HEX="$(sed -n 's/^TERMINAL_CRYPTO_IV_HEX=//p' secrets/terminal-gateway.env)"
+          SECURE_KEY="$(tr -d '\n' < secrets/secure_crypto_key)"
+          docker save aegisdock/api:secure -o /tmp/aegisdock-secure.tar
+          if grep -aF "$KEY_HEX" /tmp/aegisdock-secure.tar; then echo "Vulnerable key found in secure image"; exit 1; fi
+          if grep -aF "$IV_HEX" /tmp/aegisdock-secure.tar; then echo "Vulnerable IV found in secure image"; exit 1; fi
+          if grep -aF "$SECURE_KEY" /tmp/aegisdock-secure.tar; then echo "Secure key found in image"; exit 1; fi
+      - name: Clean up generated secret fixtures
+        if: always()
+        run: |
+          rm -f deploy/archive/terminal-gateway.env.bak
+          rm -rf secrets
+          rm -f /tmp/aegisdock-vulnerable.tar /tmp/aegisdock-secure.tar
