@@ -42,9 +42,9 @@ RUN rm /opt/legacy/terminal-gateway.env.bak
 # command (DOCKER-01) placed the file in a layer that remains in the image
 # history, teaching learners to never store secrets in Docker images.
 
-# SECURITY BEST PRACTICE: Multi-stage builds prevent secret leakage.
-# In production, use .dockerignore, build-time secrets (ARG/ENV), or
-# external secret management (Vault, KMS) instead of hardcoding in Dockerfiles.
+# SECURITY BEST PRACTICE: Do not use ARG/ENV for secrets. Use a narrow
+# .dockerignore, BuildKit secret mounts for build-time needs, and runtime-only
+# secret injection (or a managed secret store) for application credentials.
 # EXPOSE port
 EXPOSE 80
 
