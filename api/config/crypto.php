@@ -14,7 +14,7 @@ return [
     | In training, learners must recover this from the Docker image history.
     |
     */
-    'key' => env('CRYPTO_KEY', 'TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12'),
+    'key' => env('CRYPTO_KEY', 'AEGISDOCK-TRAINING-KEY-32-BYTES!'),
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,6 @@ return [
     |
     | This should be recovered along with the key from Docker image layers.
     */
-    'iv' => env('CRYPTO_IV', 'TRAINING-FAKE-IV-1234567890ABC'),
+    'iv' => env('CRYPTO_IV', 'AEGIS-STATIC-IV!'),
 
 ];
