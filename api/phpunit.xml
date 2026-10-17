@@ -23,7 +23,7 @@
         <env name="CRYPTO_KEY" value="AEGISDOCK-TRAINING-KEY-32-BYTES!"/>
         <env name="CRYPTO_IV" value="AEGIS-STATIC-IV!"/>
         <env name="BROADCAST_DRIVER" value="null"/>
-        <env name="CACHE_DRIVER" value="array"/>
+        <env name="CACHE_STORE" value="array"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
