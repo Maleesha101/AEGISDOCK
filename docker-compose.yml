@@ -31,8 +31,8 @@ services:
       - DB_DATABASE=${POSTGRES_DB:-aegisdock}
       - DB_USERNAME=${POSTGRES_USER:-aegisdock}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-aegisdock_local_only}
-      - CRYPTO_KEY=${CRYPTO_KEY:-TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12}
-      - CRYPTO_IV=${CRYPTO_IV:-TRAINING-FAKE-IV-1234567890ABC}
+      - CRYPTO_KEY=${CRYPTO_KEY:-AEGISDOCK-TRAINING-KEY-32-BYTES!}
+      - CRYPTO_IV=${CRYPTO_IV:-AEGIS-STATIC-IV!}
     volumes:
       - ./api:/var/www/html
     depends_on:
