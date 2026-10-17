@@ -36,7 +36,7 @@ Nginx currently uses HTTP for local development. Port 443 is not published until
 
 ## Vulnerable image build
 
-The vulnerable API image intentionally copies the fake file deploy/archive/terminal-gateway.env.bak into an earlier image layer and deletes it in a later layer. The Dockerfile-specific ignore file permits this one fake fixture for the vulnerable build. The root .dockerignore continues to exclude deployment archives from ordinary/secure build contexts.
+The vulnerable API image intentionally copies a locally generated fake file deploy/archive/terminal-gateway.env.bak into an earlier image layer and deletes it in a later layer. The runtime secret is mounted separately and is never passed through Docker ENV. The Dockerfile-specific ignore file permits this one fake fixture for the vulnerable build. The root .dockerignore continues to exclude deployment archives from ordinary/secure build contexts.
 
 All values in the fixture are fabricated and must never be replaced with real credentials.
 
@@ -55,7 +55,9 @@ All values in the fixture are fabricated and must never be replaced with real cr
 - [x] PostgreSQL PHP extension included in the API image
 - [x] Fake historical deployment fixture for the vulnerable image
 - [x] Audit service no longer exposes an unconditional release operation
-- [ ] Verify end-to-end Docker build and service startup
-- [ ] Verify migrations and seeded roles/users
-- [ ] Add/verify authentication and authorization tests
-- [ ] Implement secure crypto mode and regression tests
+- [x] Configure Laravel public document root and runtime directories
+- [x] Add migrations, seed data, Sanctum authentication, and role authorization tests
+- [x] Add vulnerable CBC artifact mode and secure AEAD mode
+- [x] Generate local-only secrets and verify historical-layer versus secure-image behavior in CI
+- [x] Add Next.js dashboard and login page
+- [x] Add registry image download and local audit routes
