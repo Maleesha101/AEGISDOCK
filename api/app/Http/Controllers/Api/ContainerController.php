@@ -169,6 +169,26 @@ class ContainerController extends Controller
                 // the server will trust the decrypted action field
                 $authorizedAction = $artifactData['action'] ?? 'UNKNOWN';
 
+                // VULNERABILITY: AUTH-01
+                // The decrypted action is trusted as the authorization decision.
+                // The endpoint still requires RELEASE in the artifact, so the
+                // intended lesson is ciphertext integrity—not omission of the
+                // action check. A secure implementation checks server-side role
+                // and resource policy independently of this client artifact.
+                if ($authorizedAction !== 'RELEASE') {
+                    Log::channel('audit')->warning('AUTHORIZATION_FAILURE', [
+                        'user_id' => $user->id,
+                        'reason' => 'Artifact action does not authorize release',
+                        'action' => $authorizedAction,
+                        'container' => $containerNumber,
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Authorization artifact does not permit release',
+                    ], 403);
+                }
+
                 // Log authorization success based on artifact
                 Log::channel('audit')->info('AUTHORIZATION_SUCCESS', [
                     'user_id' => $user->id,
