@@ -28,13 +28,13 @@ class SecurityHeaders
         // Implement Content Security Policy for the application
         $response->headers->set(
             'Content-Security-Policy',
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "connect-src 'self'; "
-            "font-src 'self'; "
-            "frame-ancestors 'none'; "
+            "default-src 'self'; ".
+            "script-src 'self' 'unsafe-inline'; ".
+            "style-src 'self' 'unsafe-inline'; ".
+            "img-src 'self' data: https:; ".
+            "connect-src 'self'; ".
+            "font-src 'self'; ".
+            "frame-ancestors 'none'; ".
             "base-uri 'self';"
         );
 
