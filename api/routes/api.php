@@ -15,7 +15,7 @@ Route::get('/health', static fn () => response()->json([
 ]));
 
 // Only login is public. Every operational endpoint requires a valid Sanctum token.
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/me', [AuthController::class, 'me']);
