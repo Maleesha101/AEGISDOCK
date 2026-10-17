@@ -1638,6 +1638,8 @@ The laboratory can expose progressive flags.
 
 Flags should validate understanding of the stage rather than directly reveal the next answer.
 
+Flag values are generated randomly by `scripts/init-local-secrets.sh` and are not committed to source. The dashboard includes a CTF progress panel. Authenticated API clients can list progress with `GET /api/flags` and submit a discovered value with `POST /api/flags/submit` using `{"code":"FLAG-01","flag":"AEGIS{...}"}`.
+
 The instructor solution may contain exact flag locations and validation details.
 
 ---
