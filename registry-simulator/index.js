@@ -61,9 +61,9 @@ app.get('/images/:name/download', (req, res) => {
     res.json({
         success: true,
         message: `Image ${name} download initiated`,
-        registry_url: `http://localhost:5000`,
-        download_command: `docker pull localhost:5000/${name}:${IMAGE_METADATA[name].tag}`,
-        note: 'In this lab, use docker-compose to pull the image'
+        registry_url: '/registry',
+        download_command: 'make build-vulnerable',
+        note: 'The endpoint describes the local training image; it does not contact or pull from an external registry.'
     });
 });
 
@@ -103,8 +103,8 @@ app.get('/artifact/:name/history', (req, res) => {
     });
 });
 
-app.listen(5000, () => {
-    console.log('AegisDock Registry Simulator running on port 5000');
+app.listen(3000, '0.0.0.0', () => {
+    console.log('AegisDock Registry Simulator running on port 3000');
     console.log('Endpoints:');
     console.log('  GET  /images');
     console.log('  GET  /images/:name');
