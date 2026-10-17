@@ -28,5 +28,10 @@
         "post-autoload-dump": [
             "@php artisan package:discover --ansi"
         ]
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
     }
 }
