@@ -120,7 +120,7 @@ test('secure crypto rejects expired artifact', function () {
         'action' => 'VIEW',
         'issued_at' => time() - 7200, // 2 hours ago
         'expires_at' => time() - 3600, // 1 hour ago (expired)
-    ], JSON_PRESERVE_ZERO_ORDER);
+    ], JSON_PRESERVE_ZERO_FRACTION);
 
     $nonce = random_bytes(12);
     $ciphertext = sodium_crypto_aead_aes256gcm_encrypt(
