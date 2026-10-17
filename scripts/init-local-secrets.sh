@@ -20,7 +20,7 @@ if [[ ! -s "${RUNTIME_FILE}" ]] || ! grep -q '^TERMINAL_CRYPTO_KEY_HEX=' "${RUNT
   key_hex="$(openssl rand -hex 32)"
   iv_hex="$(openssl rand -hex 16)"
   cat > "${RUNTIME_FILE}" <<EOF
-# Fake, local-only AegisDock training material.
+; Fake, local-only AegisDock training material.
 TERMINAL_CRYPTO_KEY_HEX=${key_hex}
 TERMINAL_CRYPTO_IV_HEX=${iv_hex}
 TERMINAL_API_URL=http://terminal-controller:9000
