@@ -1,99 +1,82 @@
-# AegisDock Docker Secrets
+# Docker Secret Leakage Lab
 
-## Vulnerable Image Construction
+## Objective
 
-### The Problem
+Demonstrate why deleting a secret in a later Docker layer does not remove it from earlier layers, then verify that the secure image does not contain either the vulnerable key/IV or the secure AEAD key.
 
-```dockerfile
-# Dockerfile.vulnerable
+## Local setup
 
-# Layer N: Copy deployment archive with crypto keys
-COPY deploy/archive/terminal-gateway.env.bak /opt/legacy/terminal-gateway.env.bak
-
-# ... more layers ...
-
-# Layer N+1: Remove the file
-RUN rm /opt/legacy/terminal-gateway.env.bak
-```
-
-The file is removed from the **filesystem**, but remains in the **Docker image layer history**.
-
-### Discovery Commands
+The lab generates random, fake training values locally. They are not committed to Git.
 
 ```bash
-# View image layer history
-docker history aegisdock/api:vulnerable --no-trunc
+make build-vulnerable
+make up
+```
 
-# Inspect image layers
+The setup script creates:
+- `secrets/terminal-gateway.env`: runtime-only key and IV mounted into the vulnerable API
+- `secrets/secure_crypto_key`: a separate base64-encoded key for secure mode
+- `deploy/archive/terminal-gateway.env.bak`: a temporary build fixture, removed after the image build
+
+All of these are ignored by Git. Never replace them with real credentials.
+
+## Obtain the training image
+
+The registry simulator serves the locally built image tarball:
+
+```bash
+curl -fL http://localhost:8080/registry/images/aegisdock-terminal-api/download \
+  -o /tmp/aegisdock-terminal-api.tar
+docker load -i /tmp/aegisdock-terminal-api.tar
+```
+
+## Investigate image history and layers
+
+```bash
+docker history --no-trunc aegisdock/api:vulnerable
 docker image inspect aegisdock/api:vulnerable
-
-# Extract filesystem from image layers
-docker create --name temp-extract aegisdock/api:vulnerable
-docker export temp-extract | tar -x
-find . -name "*.bak" -o -name "*.env*"
-
-# Search for secrets in image
-docker save aegisdock/api:vulnerable | tar -x
-grep -r "TERMINAL_CRYPTO_KEY" .
+docker save aegisdock/api:vulnerable -o /tmp/aegisdock-image.tar
+mkdir -p /tmp/aegisdock-image
+tar -xf /tmp/aegisdock-image.tar -C /tmp/aegisdock-image
 ```
 
-### The Leak
-
-```
-Layer: COPY deploy/archive/terminal-gateway.env.bak /opt/legacy/terminal-gateway.env.bak
-Contents:
-  TERMINAL_CRYPTO_KEY=TRAINING-FAKE-KEY-2025-ABCDEF1234567890ABCDEF12
-  TERMINAL_CRYPTO_IV=TRAINING-FAKE-IV-1234567890ABC
-  TERMINAL_API_URL=http://terminal-controller:9000
-  TERMINAL_GATEWAY_MODE=INSECURE_VULNERABLE
-```
-
-### Why This Happens
-
-Docker images are built as layered filesystem snapshots. Each `COPY`, `RUN`, or `ADD` instruction creates a new layer. Removing a file in a later layer only adds a new layer that hides the file - it doesn't rewrite previous layers. The old layer still contains the file's data.
-
-### Security Best Practices
-
-1. **Never store secrets in Dockerfiles or image layers**
-2. **Use .dockerignore to exclude sensitive files**
-3. **Use runtime secret injection**
-4. **Scan images regularly for secrets**
-5. **Use multi-stage builds to minimize layers**
-
-## Secure Image Construction
-
-```dockerfile
-# Dockerfile.secure
-
-# No secrets copied at build time
-# Secrets injected at runtime
-RUN mkdir -p /run/secrets/credentials
-
-# Application source only
-COPY api/ ./
-```
-
-### Runtime Injection
+A Docker export of the final container filesystem is not sufficient to recover a file removed in a later layer. Inspect the layer tar archives saved by `docker save`:
 
 ```bash
-# Docker secrets
-docker run -e CRYPTO_KEY=$(cat /run/secrets/crypto-key) \
-           -e CRYPTO_IV=$(cat /run/secrets/crypto-iv) \
-           aegisdock/api:secure
-
-# Or use Docker Compose secrets
-# (See docker-compose.yml for configuration)
+find /tmp/aegisdock-image -name layer.tar -print
+for layer in $(find /tmp/aegisdock-image -name layer.tar); do
+  tar -xOf "$layer" 2>/dev/null | strings | grep -E 'TERMINAL_CRYPTO_(KEY|IV)_HEX' \
+    && echo "Training material found in $layer"
+done
 ```
 
-## Detection Tools
+The intended finding is a fake key/IV configuration in a historical layer. The final filesystem should not contain the archive file:
 
 ```bash
-# Trivy - vulnerability scanner
-trivy image aegisdock/api:vulnerable
-
-# Gitleaks - secret scanner
-gitleaks detect --source=.
-
-# Docker scout
-docker scout cves aegisdock/api:vulnerable
+docker run --rm --entrypoint sh aegisdock/api:vulnerable \
+  -c 'test ! -e /opt/legacy/terminal-gateway.env.bak'
 ```
+
+## Why it happens
+
+Each `COPY`, `ADD`, and `RUN` that changes the filesystem contributes to an image layer. A later `rm` hides/removes a file from the final filesystem but does not rewrite an earlier immutable layer.
+
+## Secure image
+
+```bash
+make secure-up
+docker history --no-trunc aegisdock/api:secure
+trivy image aegisdock/api:secure
+```
+
+The secure Dockerfile never copies the deployment archive or the `secrets/` directory into the image. The AEAD key is mounted at runtime through a Compose secret. The vulnerable profile's key/IV mount is removed in the secure Compose override.
+
+## Defensive checklist
+
+- Keep secret files outside the build context.
+- Use a narrow `.dockerignore`.
+- Never pass secrets through Dockerfile `ARG` or `ENV`.
+- Use BuildKit secret mounts for build-time credentials.
+- Inject runtime secrets through a secret manager or runtime-only mount.
+- Rotate any real credential that has entered an image or its history.
+- Rebuild and scan images after remediation.
