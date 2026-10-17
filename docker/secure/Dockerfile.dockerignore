@@ -1,0 +1,14 @@
+# Secure image build context must not include archived or live secrets.
+.git
+.git/**
+.env
+.env.*
+**/.env
+**/.env.*
+deploy/archive/
+secrets/
+**/*.pem
+**/*.key
+frontend/node_modules/
+frontend/.next/
+api/vendor/
