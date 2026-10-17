@@ -1,28 +1,21 @@
 <?php
 
 return [
-    'name' => 'AegisDock',
-    'debug' => env('APP_DEBUG', false),
+    'name' => env('APP_NAME', 'AegisDock'),
+    'env' => env('APP_ENV', 'production'),
+    'debug' => (bool) env('APP_DEBUG', false),
     'url' => env('APP_URL', 'http://localhost'),
-    'assetUrl' => env('ASSET_URL'),
-    'version' => '1.0.0-training',
-    'provider' => [
-        'App\Providers\AppServiceProvider',
-    ],
-    'aliases' => [
-        'App' => App\Facades\App::class,
+    'timezone' => 'UTC',
+    'locale' => 'en',
+    'fallback_locale' => 'en',
+    'faker_locale' => 'en_US',
+    'key' => env('APP_KEY'),
+    'cipher' => 'AES-256-CBC',
+    'maintenance' => [
+        'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
     ],
     'providers' => [
-        // Laravel service providers
-        Illuminate\Foundation\Providers\BroadcastServiceProvider::class,
-        Illuminate\Foundation\Providers\BusServiceProvider::class,
-        Illuminate\Foundation\Providers\EventServiceProvider::class,
-        Illuminate\Foundation\Providers\ConsoleServiceProvider::class,
-        Illuminate\Foundation\Providers\GateServiceProvider::class,
-        Illuminate\Foundation\Providers\OctaneServiceProvider::class,
-        Illuminate\Foundation\Providers\TaskServiceProvider::class,
-        Illuminate\Foundation\Providers\HorizonServiceProvider::class,
-        Illuminate\Foundation\Providers\PassportServiceProvider::class,
+        App\Providers\AppServiceProvider::class,
         Laravel\Sanctum\SanctumServiceProvider::class,
         Spatie\Permission\PermissionServiceProvider::class,
     ],
